@@ -2,6 +2,7 @@ use crate::client::service::config::Sv2ClientServiceConfig;
 use crate::client::service::error::Sv2ClientServiceError;
 use crate::client::service::request::{RequestToSv2Client, RequestToSv2ClientError};
 use crate::client::service::response::ResponseFromSv2Client;
+use crate::client::service::sibling::Sv2SiblingServerServiceIo;
 use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
@@ -24,6 +25,7 @@ pub mod config;
 pub mod error;
 pub mod request;
 pub mod response;
+pub mod sibling;
 pub mod subprotocols;
 
 /// A [`tower::Service`] implementer that provides:
@@ -54,6 +56,7 @@ where
     // todo: add job_declaration_handler: J,
     template_distribution_handler: T,
     shutdown_tx: broadcast::Sender<()>,
+    sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
 }
 
 impl<T> Sv2ClientService<T>
@@ -61,22 +64,57 @@ where
     T: Sv2TemplateDistributionClientHandler + Clone + Send + Sync + 'static,
 {
     /// Creates a new [`Sv2ClientService`]
+    ///
+    /// No sibling server service is required.
     pub fn new(
         config: Sv2ClientServiceConfig,
         template_distribution_handler: T,
         // todo: add mining_handler: M,
         // todo: add job_declaration_handler: J,
     ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(config, template_distribution_handler, None)?;
+        Ok(sv2_client_service)
+    }
+
+    /// Creates a new [`Sv2ClientService`] with a sibling server service.
+    ///
+    /// The sibling server service is used to send and receive requests to a sibling [`crate::server::service::Sv2ServerService`] that pairs with this client.    
+    ///
+    /// Before calling this, you need to create a [`Sv2SiblingServerServiceIo`] using [`crate::server::service::Sv2ServerService::new_with_sibling_io`].
+    pub fn new_with_sibling_io(
+        config: Sv2ClientServiceConfig,
+        template_distribution_handler: T,
+        sibling_server_service_io: Sv2SiblingServerServiceIo,
+    ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(
+            config,
+            template_distribution_handler,
+            Some(sibling_server_service_io),
+        )?;
+        Ok(sv2_client_service)
+    }
+
+    // internal constructor
+    fn _new(
+        config: Sv2ClientServiceConfig,
+        // todo: add mining_handler: M,
+        // todo: add job_declaration_handler: J,
+        template_distribution_handler: T,
+        sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
+    ) -> Result<Self, Sv2ClientServiceError> {
         Self::validate_protocol_handlers(&config)?;
 
-        Ok(Self {
+        let sv2_client_service = Sv2ClientService {
             config,
             mining_tcp_client: Arc::new(Mutex::new(None)),
             job_declaration_tcp_client: Arc::new(Mutex::new(None)),
             template_distribution_tcp_client: Arc::new(Mutex::new(None)),
             template_distribution_handler,
             shutdown_tx: broadcast::channel(1).0,
-        })
+            sibling_server_service_io,
+        };
+
+        Ok(sv2_client_service)
     }
 
     // Validates that the protocol handlers are consistent with the supported protocols.
@@ -327,7 +365,7 @@ where
     }
 
     /// Listens for messages from the server and triggers Service Requests
-    pub async fn listen_for_messages(
+    pub async fn listen_for_messages_via_tcp(
         &mut self,
         protocol: Protocol,
     ) -> Result<(), RequestToSv2ClientError> {
@@ -371,9 +409,8 @@ where
                                 error!("Error handling message: {:?}, message will be ignored", e);
                             }
                         }
-                        Err(e) => {
-                            error!("Error listening for messages: {:?}, shutting down", e);
-                            self.shutdown().await;
+                        Err(_) => {
+                            debug!("Message listener channel closed");
                             break;
                         }
                     }
@@ -381,6 +418,42 @@ where
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn listen_for_requests_via_sibling_server_service(
+        &mut self,
+    ) -> Result<(), RequestToSv2ClientError> {
+        let sibling_server_service_io = self
+            .sibling_server_service_io
+            .as_ref()
+            .ok_or(RequestToSv2ClientError::NoSiblingServerServiceIo)?;
+
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        loop {
+            tokio::select! {
+                _ = shutdown_rx.recv() => {
+                    debug!("Sibling server service request listener received shutdown signal");
+                    break;
+                }
+                result = sibling_server_service_io.recv() => {
+                    match result {
+                        Ok(req) => {
+                            debug!("Received request from sibling server service");
+
+                            let mut service = self.clone();
+                            if let Err(e) = service.call(*req).await {
+                                error!("Error handling request from sibling server service: {:?}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to receive request from sibling server service: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -588,6 +661,23 @@ where
                         todo!()
                     }
                 },
+                RequestToSv2Client::SendRequestToSiblingServerService(req) => {
+                    debug!("Sv2ClientService received a SendRequestToSiblingServerService request");
+                    match this.sibling_server_service_io {
+                        Some(ref io) => {
+                            io.send(*req.clone()).map_err(|_| {
+                                RequestToSv2ClientError::FailedToSendRequestToSiblingServerService
+                            })?;
+                            Ok(ResponseFromSv2Client::SentRequestToSiblingServerService(
+                                *req,
+                            ))
+                        }
+                        None => {
+                            error!("No sibling server service on Sv2ClientService");
+                            Err(RequestToSv2ClientError::NoSiblingServerServiceIo)
+                        }
+                    }
+                }
             };
 
             // allows for recursive chaining of requests
@@ -934,7 +1024,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
         tokio::spawn(async move {
             let result = sv2_client_service_clone
-                .listen_for_messages(Protocol::TemplateDistributionProtocol)
+                .listen_for_messages_via_tcp(Protocol::TemplateDistributionProtocol)
                 .await;
             tx.send(()).await.unwrap();
             result

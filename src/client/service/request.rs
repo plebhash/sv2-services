@@ -1,4 +1,5 @@
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
 use roles_logic_sv2::common_messages_sv2::Protocol;
 use roles_logic_sv2::parsers::AnyMessage;
@@ -12,6 +13,8 @@ pub enum RequestToSv2Client<'a> {
     /// Could belong to any subprotocol.
     Message(AnyMessage<'a>),
     TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService),
+    /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
+    SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
 }
 
 /// The error type for the [`crate::client::service::Sv2ClientService`] service.
@@ -24,6 +27,8 @@ pub enum RequestToSv2ClientError {
     SetupConnectionError(String),
     ConnectionError(String),
     StringConversionError(String),
+    NoSiblingServerServiceIo,
+    FailedToSendRequestToSiblingServerService,
 }
 
 impl From<Sv2MessageIoError> for RequestToSv2ClientError {

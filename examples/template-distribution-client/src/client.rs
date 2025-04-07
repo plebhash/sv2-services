@@ -111,7 +111,7 @@ impl MyTemplateDistributionClient {
         let mut service = self.sv2_client_service.clone();
         tokio::spawn(async move {
             if let Err(e) = service
-                .listen_for_messages(Protocol::TemplateDistributionProtocol)
+                .listen_for_messages_via_tcp(Protocol::TemplateDistributionProtocol)
                 .await
             {
                 error!("Error listening for messages: {:?}", e);
