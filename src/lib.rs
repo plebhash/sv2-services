@@ -23,6 +23,7 @@ use roles_logic_sv2::parsers::{
 
 pub use key_utils;
 pub use roles_logic_sv2;
+pub use tower;
 
 /// Client-side modules for establishing and managing Stratum V2 connections.
 ///
