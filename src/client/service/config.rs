@@ -57,8 +57,6 @@ pub struct Sv2ClientServiceTemplateDistributionConfig {
     pub server_addr: SocketAddr,
     /// Optional authentication public key for encrypted connections
     pub auth_pk: Option<Secp256k1PublicKey>,
-    /// Bitflags indicating the protocol features this client supports.
-    pub supported_flags: u32,
     /// Coinbase output constraints in the format (max_additional_size, max_additional_sigops	)
     pub coinbase_output_constraints: (u32, u16),
 }
@@ -70,8 +68,6 @@ pub struct Sv2ClientServiceJobDeclarationConfig {
     pub server_addr: SocketAddr,
     /// Optional authentication public key for encrypted connections
     pub auth_pk: Option<Secp256k1PublicKey>,
-    /// Bitflags indicating the protocol features this client supports.
-    pub supported_flags: u32,
 }
 
 /// Configuration in case Sv2ClientService supports the Mining protocol
@@ -81,6 +77,4 @@ pub struct Sv2ClientServiceMiningConfig {
     pub server_addr: SocketAddr,
     /// Optional authentication public key for encrypted connections
     pub auth_pk: Option<Secp256k1PublicKey>,
-    /// Bitflags indicating the protocol features this client supports.
-    pub supported_flags: u32,
 }

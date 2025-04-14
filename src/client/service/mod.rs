@@ -660,7 +660,6 @@ mod tests {
         let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
-            supported_flags: 0,
             coinbase_output_constraints: (1, 1),
             server_addr: tp_addr,
             auth_pk: None,
@@ -733,7 +732,6 @@ mod tests {
             firmware: Some("test".to_string()),
             device_id: Some("test".to_string()),
             mining_config: Some(Sv2ClientServiceMiningConfig {
-                supported_flags: 0,
                 server_addr: tp_addr,
                 auth_pk: None,
             }),
@@ -806,7 +804,6 @@ mod tests {
         assert!(result.is_err());
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
-            supported_flags: 0,
             coinbase_output_constraints: (1, 1),
             server_addr: std::net::SocketAddr::new(
                 std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
@@ -846,7 +843,6 @@ mod tests {
         let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
-            supported_flags: 0,
             coinbase_output_constraints: (1, 1),
             server_addr: tp_addr,
             auth_pk: None,
@@ -895,7 +891,6 @@ mod tests {
         let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
-            supported_flags: 0,
             coinbase_output_constraints: (1, 1),
             server_addr: tp_addr,
             auth_pk: None,

@@ -32,7 +32,6 @@ impl MyTemplateDistributionClient {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: Some(Sv2ClientServiceTemplateDistributionConfig {
-                supported_flags: 0,
                 coinbase_output_constraints: (
                     config.coinbase_output_max_additional_size,
                     config.coinbase_output_max_additional_sigops,
