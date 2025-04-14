@@ -18,7 +18,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::{broadcast, Mutex};
-use tower::Service;
+use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
 pub mod config;
@@ -166,6 +166,49 @@ where
                 guard.is_some()
             }
         }
+    }
+
+    pub async fn start(&mut self) -> Result<(), Sv2ClientServiceError> {
+        self.ready()
+            .await
+            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
+        for protocol in self.config.supported_protocols() {
+            let initiate_connection_response = self
+                .call(RequestToSv2Client::SetupConnectionTrigger(protocol))
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+            match initiate_connection_response {
+                ResponseFromSv2Client::ConnectionEstablished => {
+                    debug!("Connection established with {:?}", protocol);
+                }
+                _ => {
+                    return Err(Sv2ClientServiceError::FailedToInitiateConnection { protocol });
+                }
+            }
+
+            let mut this = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = this.listen_for_messages_via_tcp(protocol).await {
+                    error!("Error listening for messages: {:?}", e);
+                }
+            });
+
+            let mut this = self.clone();
+            if let Some(_sibling_server_service_io) = &mut this.sibling_server_service_io {
+                tokio::spawn(async move {
+                    if let Err(e) = this.listen_for_requests_via_sibling_server_service().await {
+                        error!("Error listening for requests: {:?}", e);
+                    }
+                });
+            }
+        }
+
+        self.ready()
+            .await
+            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
+        Ok(())
     }
 
     /// Shuts down the client service
@@ -364,8 +407,8 @@ where
         }
     }
 
-    /// Listens for messages from the server and triggers Service Requests
-    pub async fn listen_for_messages_via_tcp(
+    // Listens for messages from the server and triggers Service Requests
+    async fn listen_for_messages_via_tcp(
         &mut self,
         protocol: Protocol,
     ) -> Result<(), RequestToSv2ClientError> {
@@ -421,7 +464,8 @@ where
         Ok(())
     }
 
-    pub async fn listen_for_requests_via_sibling_server_service(
+    // Listens for requests from the sibling server service and triggers Service Requests
+    async fn listen_for_requests_via_sibling_server_service(
         &mut self,
     ) -> Result<(), RequestToSv2ClientError> {
         let sibling_server_service_io = self

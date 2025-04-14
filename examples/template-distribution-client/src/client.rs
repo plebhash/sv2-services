@@ -1,7 +1,6 @@
 use crate::config::MyTemplateDistributionClientConfig;
 use crate::handler::MyTemplateDistributionHandler;
 use anyhow::{Result, anyhow};
-use roles_logic_sv2::common_messages_sv2::Protocol;
 use tower::{Service, ServiceExt};
 use tower_stratum::client::service::Sv2ClientService;
 use tower_stratum::client::service::config::Sv2ClientServiceConfig;
@@ -10,7 +9,7 @@ use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use tower_stratum::client::service::subprotocols::template_distribution::response::ResponseToTemplateDistributionTrigger;
-use tracing::{error, info};
+use tracing::info;
 
 pub struct MyTemplateDistributionClient {
     sv2_client_service: Sv2ClientService<MyTemplateDistributionHandler>,
@@ -58,28 +57,9 @@ impl MyTemplateDistributionClient {
 
     pub async fn start(&mut self) -> Result<()> {
         self.sv2_client_service
-            .ready()
+            .start()
             .await
-            .map_err(|e| anyhow!("Service is not ready: {:?}", e))?;
-
-        let initiate_connection_response = self
-            .sv2_client_service
-            .call(RequestToSv2Client::SetupConnectionTrigger(
-                Protocol::TemplateDistributionProtocol,
-            ))
-            .await
-            .map_err(|e| panic!("Failed to initiate connection: {:?}", e))?;
-
-        match initiate_connection_response {
-            ResponseFromSv2Client::ConnectionEstablished => {
-                info!("Connection established with Template Distribution Server");
-            }
-            _ => {
-                return Err(anyhow!(
-                    "Failed to initiate connection with Template Distribution Server"
-                ));
-            }
-        }
+            .map_err(|e| anyhow!("Failed to start Sv2ClientService: {:?}", e))?;
 
         self.sv2_client_service
             .ready()
@@ -107,16 +87,6 @@ impl MyTemplateDistributionClient {
                 return Err(anyhow!("Failed to set coinbase output constraints"));
             }
         }
-
-        let mut service = self.sv2_client_service.clone();
-        tokio::spawn(async move {
-            if let Err(e) = service
-                .listen_for_messages_via_tcp(Protocol::TemplateDistributionProtocol)
-                .await
-            {
-                error!("Error listening for messages: {:?}", e);
-            }
-        });
 
         Ok(())
     }
