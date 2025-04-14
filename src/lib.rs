@@ -21,6 +21,9 @@ use roles_logic_sv2::parsers::{
     TemplateDistribution::{self, CoinbaseOutputConstraints},
 };
 
+pub use key_utils;
+pub use roles_logic_sv2;
+
 /// Client-side modules for establishing and managing Stratum V2 connections.
 ///
 /// This module provides the client implementation of the Stratum V2 protocol, including:
