@@ -179,7 +179,7 @@ where
                 .await
                 .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
             match initiate_connection_response {
-                ResponseFromSv2Client::ConnectionEstablished => {
+                ResponseFromSv2Client::Ok => {
                     debug!("Connection established with {:?}", protocol);
                 }
                 _ => {
@@ -393,7 +393,7 @@ where
                     "SetupConnectionSuccess received: version: {}, flags: {}",
                     server_used_version, server_used_flags
                 );
-                Ok(ResponseFromSv2Client::ConnectionEstablished)
+                Ok(ResponseFromSv2Client::Ok)
             }
             AnyMessage::Common(CommonMessages::SetupConnectionError(setup_connection_error)) => {
                 let error_code =
@@ -840,7 +840,7 @@ mod tests {
         // Verify the response matches what we expect
         assert!(matches!(
             initiate_connection_response,
-            ResponseFromSv2Client::ConnectionEstablished
+            ResponseFromSv2Client::Ok
         ));
 
         // Check connection state on the updated service instance
@@ -1058,10 +1058,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert!(matches!(
-            response,
-            ResponseFromSv2Client::ConnectionEstablished
-        ));
+        assert!(matches!(response, ResponseFromSv2Client::Ok));
 
         // Start message listener in background
         let mut sv2_client_service_clone = sv2_client_service.clone();
