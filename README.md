@@ -21,7 +21,7 @@ Note: currently development focus is on Stratum V2 (Sv2). While theoretically po
 
 # Scope
 
-`tower-stratum` provides [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html)s and [`tower::Layer`](https://docs.rs/tower/latest/tower/trait.Layer.html)s for building apps to be executed under `tokio` runtimes.
+`tower-stratum` provides [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html)s for building apps to be executed under `tokio` runtimes.
 
 They can be divided in two categories:
 - Client-side (`Sv2ClientService`)

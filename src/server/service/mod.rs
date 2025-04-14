@@ -27,7 +27,6 @@ pub mod client;
 pub mod config;
 pub mod connection;
 pub mod error;
-pub mod layer;
 pub mod request;
 pub mod response;
 pub mod subprotocols;
@@ -328,7 +327,10 @@ where
         req: SetupConnection<'static>,
         client_id: u32,
     ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-        debug!("Sv2ServerService received a SetupConnection request: {:?}", req);
+        debug!(
+            "Sv2ServerService received a SetupConnection request: {:?}",
+            req
+        );
 
         // 1) Check subprotocol
         if !self.config.supported_protocols().contains(&req.protocol) {
@@ -754,20 +756,16 @@ mod tests {
     use crate::server::service::config::Sv2ServerServiceJobDeclarationConfig;
     use crate::server::service::config::Sv2ServerServiceMiningConfig;
     use crate::server::service::config::Sv2ServerTcpConfig;
+    use crate::server::service::Sv2ServerService;
     use crate::server::service::{
-        error::Sv2ServerServiceError, layer::Sv2ServerLayer,
-        subprotocols::mining::handler::NullSv2MiningServerHandler, Sv2ServerServiceConfig,
+        error::Sv2ServerServiceError, subprotocols::mining::handler::NullSv2MiningServerHandler,
+        Sv2ServerServiceConfig,
     };
     use crate::Sv2MessageFrame;
     use key_utils::{Secp256k1PublicKey, Secp256k1SecretKey};
     use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
     use roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
-    use tower::ServiceBuilder;
-
-    // A completely unrelated dummy type used only to satisfy Tower's architecture requirements
-    // This has no connection to any actual stratum types
-    struct DummyRequest;
 
     fn get_available_port() -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -810,15 +808,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        // Base service that is only used to satisfy Tower's architecture
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            // This code should never execute in these tests - the layer handles the requests
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 
@@ -935,14 +926,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        // Base service that is only used to satisfy Tower's architecture
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 
@@ -1034,14 +1019,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        // Base service that is only used to satisfy Tower's architecture
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 
@@ -1143,14 +1122,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        // Base service that is only used to satisfy Tower's architecture
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 
@@ -1300,15 +1273,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        // Base service that is only used to satisfy Tower's architecture
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
-
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
         sv2_server_service.start().await.unwrap();
 
         // Create a TCP client to establish a connection
@@ -1451,13 +1417,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 
@@ -1507,13 +1468,8 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test");
-        });
-
-        let mut sv2_server_service = ServiceBuilder::new()
-            .layer(Sv2ServerLayer::new(sv2_server_config, mining_handler))
-            .service(base_service);
+        let mut sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
 
         sv2_server_service.start().await.unwrap();
 

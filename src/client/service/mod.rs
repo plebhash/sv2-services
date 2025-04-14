@@ -22,7 +22,6 @@ use tracing::{debug, error};
 
 pub mod config;
 pub mod error;
-pub mod layer;
 pub mod request;
 pub mod response;
 pub mod subprotocols;
@@ -608,7 +607,6 @@ mod tests {
     use crate::client::service::config::Sv2ClientServiceConfig;
     use crate::client::service::config::Sv2ClientServiceMiningConfig;
     use crate::client::service::config::Sv2ClientServiceTemplateDistributionConfig;
-    use crate::client::service::layer::Sv2ClientLayer;
     use crate::client::service::request::RequestToSv2Client;
     use crate::client::service::response::ResponseFromSv2Client;
     use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
@@ -620,11 +618,7 @@ mod tests {
         NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
     };
     use tokio::sync::mpsc;
-    use tower::{Service, ServiceBuilder, ServiceExt};
-
-    // A completely unrelated dummy type used only to satisfy Tower's architecture requirements
-    // This has no connection to any actual stratum types
-    struct DummyRequest;
+    use tower::{Service, ServiceExt};
 
     // A dummy template distribution handler that is not null, but not actually handling anything
     #[derive(Debug, Clone, Default)]
@@ -688,16 +682,9 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_client_service = ServiceBuilder::new()
-            .layer(Sv2ClientLayer::new(
-                sv2_client_service_config,
-                template_distribution_handler,
-            ))
-            .service(base_service);
+        let mut sv2_client_service =
+            Sv2ClientService::new(sv2_client_service_config, template_distribution_handler)
+                .unwrap();
 
         assert!(
             !sv2_client_service
@@ -756,16 +743,9 @@ mod tests {
 
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test - the layer should handle all requests");
-        });
-
-        let mut sv2_client_service = ServiceBuilder::new()
-            .layer(Sv2ClientLayer::new(
-                sv2_client_service_config,
-                template_distribution_handler,
-            ))
-            .service(base_service);
+        let mut sv2_client_service =
+            Sv2ClientService::new(sv2_client_service_config, template_distribution_handler)
+                .unwrap();
 
         assert!(
             !sv2_client_service
@@ -888,16 +868,9 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test");
-        });
-
-        let mut sv2_client_service = ServiceBuilder::new()
-            .layer(Sv2ClientLayer::new(
-                sv2_client_service_config,
-                template_distribution_handler,
-            ))
-            .service(base_service);
+        let mut sv2_client_service =
+            Sv2ClientService::new(sv2_client_service_config, template_distribution_handler)
+                .unwrap();
 
         // Verify initial state
         assert!(
@@ -944,16 +917,9 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionHandler;
 
-        let base_service = tower::service_fn(|_req: DummyRequest| async move {
-            panic!("Base service should never be called inside this test");
-        });
-
-        let mut sv2_client_service = ServiceBuilder::new()
-            .layer(Sv2ClientLayer::new(
-                sv2_client_service_config,
-                template_distribution_handler,
-            ))
-            .service(base_service);
+        let mut sv2_client_service =
+            Sv2ClientService::new(sv2_client_service_config, template_distribution_handler)
+                .unwrap();
 
         // Connect to the server
         sv2_client_service.ready().await.unwrap();
