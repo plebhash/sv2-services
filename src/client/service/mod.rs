@@ -17,7 +17,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, RwLock};
 use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
@@ -49,9 +49,9 @@ where
     T: Sv2TemplateDistributionClientHandler + Clone + Send + Sync + 'static,
 {
     config: Sv2ClientServiceConfig,
-    mining_tcp_client: Arc<Mutex<Option<Sv2EncryptedTcpClient>>>,
-    job_declaration_tcp_client: Arc<Mutex<Option<Sv2EncryptedTcpClient>>>,
-    template_distribution_tcp_client: Arc<Mutex<Option<Sv2EncryptedTcpClient>>>,
+    mining_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
+    job_declaration_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
+    template_distribution_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
     // todo: add mining_handler: M,
     // todo: add job_declaration_handler: J,
     template_distribution_handler: T,
@@ -106,9 +106,9 @@ where
 
         let sv2_client_service = Sv2ClientService {
             config,
-            mining_tcp_client: Arc::new(Mutex::new(None)),
-            job_declaration_tcp_client: Arc::new(Mutex::new(None)),
-            template_distribution_tcp_client: Arc::new(Mutex::new(None)),
+            mining_tcp_client: Arc::new(RwLock::new(None)),
+            job_declaration_tcp_client: Arc::new(RwLock::new(None)),
+            template_distribution_tcp_client: Arc::new(RwLock::new(None)),
             template_distribution_handler,
             shutdown_tx: broadcast::channel(1).0,
             sibling_server_service_io,
@@ -154,15 +154,15 @@ where
     pub async fn is_connected(&self, protocol: Protocol) -> bool {
         match protocol {
             Protocol::MiningProtocol => {
-                let guard = self.mining_tcp_client.lock().await;
+                let guard = self.mining_tcp_client.read().await;
                 guard.is_some()
             }
             Protocol::JobDeclarationProtocol => {
-                let guard = self.job_declaration_tcp_client.lock().await;
+                let guard = self.job_declaration_tcp_client.read().await;
                 guard.is_some()
             }
             Protocol::TemplateDistributionProtocol => {
-                let guard = self.template_distribution_tcp_client.lock().await;
+                let guard = self.template_distribution_tcp_client.read().await;
                 guard.is_some()
             }
         }
@@ -221,7 +221,7 @@ where
         }
 
         {
-            let mut mining_guard = self.mining_tcp_client.lock().await;
+            let mut mining_guard = self.mining_tcp_client.write().await;
             if let Some(client) = &*mining_guard {
                 client.shutdown();
             }
@@ -229,7 +229,7 @@ where
         }
 
         {
-            let mut job_declaration_guard = self.job_declaration_tcp_client.lock().await;
+            let mut job_declaration_guard = self.job_declaration_tcp_client.write().await;
             if let Some(client) = &*job_declaration_guard {
                 client.shutdown();
             }
@@ -237,8 +237,8 @@ where
         }
 
         {
-            let mut template_distribution_guard =
-                self.template_distribution_tcp_client.lock().await;
+            let mut template_distribution_guard = 
+                self.template_distribution_tcp_client.write().await;
             if let Some(client) = &*template_distribution_guard {
                 client.shutdown();
             }
@@ -256,7 +256,7 @@ where
         // Establish TCP connection if not already connected
         let tcp_client = match protocol {
             Protocol::MiningProtocol => {
-                if self.mining_tcp_client.lock().await.is_none() {
+                if self.mining_tcp_client.read().await.is_none() {
                     let config = self.config.mining_config.as_ref().ok_or_else(|| {
                         RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::MiningProtocol,
@@ -270,13 +270,13 @@ where
                             )
                         })?;
                     self.mining_tcp_client
-                        .lock()
+                        .write()
                         .await
                         .replace(tcp_client.clone());
                     tcp_client
                 } else {
                     self.mining_tcp_client
-                        .lock()
+                        .read()
                         .await
                         .as_ref()
                         .expect("mining_tcp_client should be Some")
@@ -284,7 +284,7 @@ where
                 }
             }
             Protocol::JobDeclarationProtocol => {
-                if self.job_declaration_tcp_client.lock().await.is_none() {
+                if self.job_declaration_tcp_client.read().await.is_none() {
                     let config = self.config.job_declaration_config.as_ref().ok_or_else(|| {
                         RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::JobDeclarationProtocol,
@@ -298,13 +298,13 @@ where
                             )
                         })?;
                     self.job_declaration_tcp_client
-                        .lock()
+                        .write()
                         .await
                         .replace(tcp_client.clone());
                     tcp_client
                 } else {
                     self.job_declaration_tcp_client
-                        .lock()
+                        .read()
                         .await
                         .as_ref()
                         .expect("job_declaration_tcp_client should be Some")
@@ -312,7 +312,7 @@ where
                 }
             }
             Protocol::TemplateDistributionProtocol => {
-                if self.template_distribution_tcp_client.lock().await.is_none() {
+                if self.template_distribution_tcp_client.read().await.is_none() {
                     let config = self
                         .config
                         .template_distribution_config
@@ -328,13 +328,13 @@ where
                             )
                         })?;
                     self.template_distribution_tcp_client
-                        .lock()
+                        .write()
                         .await
                         .replace(tcp_client.clone());
                     tcp_client
                 } else {
                     self.template_distribution_tcp_client
-                        .lock()
+                        .read()
                         .await
                         .as_ref()
                         .expect("template_distribution_tcp_client should be Some")
@@ -417,18 +417,18 @@ where
         }
 
         let tcp_client: Sv2EncryptedTcpClient = match protocol {
-            Protocol::MiningProtocol => match self.mining_tcp_client.lock().await.as_ref() {
+            Protocol::MiningProtocol => match self.mining_tcp_client.read().await.as_ref() {
                 Some(client) => client.clone(),
                 None => return Err(RequestToSv2ClientError::IsNotConnected),
             },
             Protocol::JobDeclarationProtocol => {
-                match self.job_declaration_tcp_client.lock().await.as_ref() {
+                match self.job_declaration_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
                     None => return Err(RequestToSv2ClientError::IsNotConnected),
                 }
             }
             Protocol::TemplateDistributionProtocol => {
-                match self.template_distribution_tcp_client.lock().await.as_ref() {
+                match self.template_distribution_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
                     None => return Err(RequestToSv2ClientError::IsNotConnected),
                 }
@@ -664,7 +664,7 @@ where
 
                         let tcp_client = this
                             .template_distribution_tcp_client
-                            .lock()
+                            .read()
                             .await
                             .as_ref()
                             .expect("template_distribution_tcp_client should be Some")
