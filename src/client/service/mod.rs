@@ -177,7 +177,7 @@ where
             let initiate_connection_response = self
                 .call(RequestToSv2Client::SetupConnectionTrigger(protocol))
                 .await
-                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+                .map_err(|_| Sv2ClientServiceError::FailedToInitiateConnection { protocol })?;
             match initiate_connection_response {
                 ResponseFromSv2Client::Ok => {
                     debug!("Connection established with {:?}", protocol);
@@ -416,7 +416,7 @@ where
             return Err(RequestToSv2ClientError::IsNotConnected);
         }
 
-        let tcp_client = match protocol {
+        let tcp_client: Sv2EncryptedTcpClient = match protocol {
             Protocol::MiningProtocol => match self.mining_tcp_client.lock().await.as_ref() {
                 Some(client) => client.clone(),
                 None => return Err(RequestToSv2ClientError::IsNotConnected),
