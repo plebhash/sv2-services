@@ -237,7 +237,7 @@ where
         }
 
         {
-            let mut template_distribution_guard = 
+            let mut template_distribution_guard =
                 self.template_distribution_tcp_client.write().await;
             if let Some(client) = &*template_distribution_guard {
                 client.shutdown();
@@ -517,7 +517,9 @@ where
     }
 
     fn call(&mut self, request: RequestToSv2Client<'static>) -> Self::Future {
-        let mut this = self.clone();
+        // https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+        let clone = self.clone();
+        let mut this = std::mem::replace(self, clone);
 
         Box::pin(async move {
             let response = match request {

@@ -591,7 +591,9 @@ where
     }
 
     fn call(&mut self, req: RequestToSv2Server<'static>) -> Self::Future {
-        let mut this = self.clone();
+        // https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+        let clone = self.clone();
+        let mut this = std::mem::replace(self, clone);
 
         Box::pin(async move {
             // Extract client_id if available and update message time
