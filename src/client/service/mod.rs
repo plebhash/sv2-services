@@ -500,6 +500,18 @@ where
         }
         Ok(())
     }
+
+    /// Checks if the handler for the given protocol is a null handler
+    fn has_null_handler(protocol: Protocol) -> bool {
+        match protocol {
+            Protocol::MiningProtocol => true, // Currently always true since mining handler is not implemented yet
+            Protocol::JobDeclarationProtocol => true, // Currently always true since job declaration handler is not implemented yet
+            Protocol::TemplateDistributionProtocol => {
+                std::any::TypeId::of::<T>()
+                    == std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+            }
+        }
+    }
 }
 
 impl<T> Service<RequestToSv2Client<'static>> for Sv2ClientService<T>
@@ -511,9 +523,42 @@ where
     type Future =
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
-    // Always ready
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    /// Polls readiness of each subprotocol handler.
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // let mining_poll_ready = match Self::has_null_handler(Protocol::MiningProtocol) {
+        //     true => Poll::Ready(Ok(())),
+        //     false => self.mining_handler.poll_ready(cx),
+        // };
+
+        let mining_poll_ready = Poll::Ready(Ok(()));
+
+        // let job_declaration_poll_ready = match Self::has_null_handler(Protocol::JobDeclarationProtocol) {
+        //     true => Poll::Ready(Ok(())),
+        //     false => self.job_declaration_handler.poll_ready(cx),
+        // };
+
+        let job_declaration_poll_ready = Poll::Ready(Ok(()));
+
+        let template_distribution_poll_ready =
+            match Self::has_null_handler(Protocol::TemplateDistributionProtocol) {
+                true => Poll::Ready(Ok(())),
+                false => self.template_distribution_handler.poll_ready(cx),
+            };
+
+        // let template_distribution_poll_ready = Poll::Ready(Ok(()));
+
+        // Combine the poll results - if any handler is not ready, return NotReady
+        match (
+            mining_poll_ready,
+            job_declaration_poll_ready,
+            template_distribution_poll_ready,
+        ) {
+            (Poll::Ready(Ok(())), Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => Poll::Ready(Ok(())),
+            (Poll::Ready(Err(e)), _, _) => Poll::Ready(Err(e)),
+            (_, Poll::Ready(Err(e)), _) => Poll::Ready(Err(e)),
+            (_, _, Poll::Ready(Err(e))) => Poll::Ready(Err(e)),
+            _ => Poll::Pending,
+        }
     }
 
     fn call(&mut self, request: RequestToSv2Client<'static>) -> Self::Future {
@@ -753,6 +798,7 @@ mod tests {
     use roles_logic_sv2::template_distribution_sv2::{
         NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
     };
+    use std::task::{Context, Poll};
     use tokio::sync::mpsc;
     use tower::{Service, ServiceExt};
 
@@ -761,6 +807,13 @@ mod tests {
     struct DummyTemplateDistributionHandler;
 
     impl Sv2TemplateDistributionClientHandler for DummyTemplateDistributionHandler {
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), RequestToSv2ClientError>> {
+            Poll::Ready(Ok(()))
+        }
+
         async fn handle_new_template(
             &self,
             _template: NewTemplate<'static>,

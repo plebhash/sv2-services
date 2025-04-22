@@ -7,6 +7,8 @@ use roles_logic_sv2::mining_sv2::{
 };
 use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 
+use std::task::{Context, Poll};
+
 /// Trait that must be implemented in case [`crate::server::service::Sv2ServerService`] supports the Mining subprotocol.
 ///
 /// We assume that it will keep a state for every client, where each client_id is in sync with the client_id of the
@@ -14,6 +16,8 @@ use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 ///
 /// Removing a client on [`crate::server::service::Sv2ServerService`] also triggers removing the client on this handler.
 pub trait Sv2MiningServerHandler {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>>;
+
     fn setup_connection_success_flags(&self) -> u32;
 
     fn add_client(
@@ -113,6 +117,10 @@ pub trait Sv2MiningServerHandler {
 pub struct NullSv2MiningServerHandler;
 
 impl Sv2MiningServerHandler for NullSv2MiningServerHandler {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>> {
+        unimplemented!("NullSv2MiningServerHandler does not implement poll_ready");
+    }
+
     /// The subprotocol flags to be used on SetupConnectionSuccess
     fn setup_connection_success_flags(&self) -> u32 {
         unimplemented!("NullSv2MiningServerHandler does not implement return_flags")
