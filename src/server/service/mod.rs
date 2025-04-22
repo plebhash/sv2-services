@@ -585,13 +585,43 @@ where
     type Future =
         Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
 
-    /// Always ready.
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+    /// Polls readiness of each subprotocol handler.
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let mining_poll_ready = match Self::has_null_handler(Protocol::MiningProtocol) {
+            true => Poll::Ready(Ok(())),
+            false => self.mining_handler.poll_ready(cx),
+        };
+
+        // let job_declaration_poll_ready = match Self::has_null_handler(Protocol::JobDeclarationProtocol) {
+        //     true => Poll::Ready(Ok(())),
+        //     false => self.job_declaration_handler.poll_ready(cx),
+        // };
+        let job_declaration_poll_ready = Poll::Ready(Ok(()));
+
+        // let template_distribution_poll_ready = match Self::has_null_handler(Protocol::TemplateDistributionProtocol) {
+        //     true => Poll::Ready(Ok(())),
+        //     false => self.template_distribution_handler.poll_ready(cx),
+        // };
+        let template_distribution_poll_ready = Poll::Ready(Ok(()));
+
+        // Combine the poll results - if any handler is not ready, return NotReady
+        match (
+            mining_poll_ready,
+            job_declaration_poll_ready,
+            template_distribution_poll_ready,
+        ) {
+            (Poll::Ready(Ok(())), Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => Poll::Ready(Ok(())),
+            (Poll::Ready(Err(e)), _, _) => Poll::Ready(Err(e)),
+            (_, Poll::Ready(Err(e)), _) => Poll::Ready(Err(e)),
+            (_, _, Poll::Ready(Err(e))) => Poll::Ready(Err(e)),
+            _ => Poll::Pending,
+        }
     }
 
     fn call(&mut self, req: RequestToSv2Server<'static>) -> Self::Future {
-        let mut this = self.clone();
+        // https://docs.rs/tower/latest/tower/trait.Service.html#be-careful-when-cloning-inner-services
+        let clone = self.clone();
+        let mut this = std::mem::replace(self, clone);
 
         Box::pin(async move {
             // Extract client_id if available and update message time

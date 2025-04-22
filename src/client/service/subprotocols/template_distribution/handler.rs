@@ -7,8 +7,12 @@ use roles_logic_sv2::template_distribution_sv2::{
     RequestTransactionDataSuccess, SetNewPrevHash,
 };
 
+use std::task::{Context, Poll};
+
 /// Trait that must be implemented in case [`crate::client::service::Sv2ClientService`] supports the Template Distribution protocol
 pub trait Sv2TemplateDistributionClientHandler {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>>;
+
     fn handle_new_template(
         &self,
         template: NewTemplate<'static>,
@@ -80,6 +84,10 @@ pub trait Sv2TemplateDistributionClientHandler {
 pub struct NullSv2TemplateDistributionClientHandler;
 
 impl Sv2TemplateDistributionClientHandler for NullSv2TemplateDistributionClientHandler {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>> {
+        unimplemented!("NullSv2TemplateDistributionClientHandler does not implement poll_ready");
+    }
+
     async fn handle_new_template(
         &self,
         _template: NewTemplate<'static>,

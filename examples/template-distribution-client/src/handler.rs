@@ -2,11 +2,11 @@ use anyhow::Result;
 use roles_logic_sv2::template_distribution_sv2::{
     NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
 };
+use std::task::{Context, Poll};
 use tower_stratum::client::service::request::RequestToSv2ClientError;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use tracing::info;
-
 #[derive(Debug, Clone, Default)]
 pub struct MyTemplateDistributionHandler {
     // You could add fields here to store state or callbacks
@@ -14,6 +14,10 @@ pub struct MyTemplateDistributionHandler {
 
 /// Implement the Sv2TemplateDistributionClientHandler trait for MyTemplateDistributionClient
 impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>> {
+        Poll::Ready(Ok(()))
+    }
+
     async fn handle_new_template(
         &self,
         template: NewTemplate<'static>,
