@@ -7,12 +7,13 @@ use tower_stratum::client::service::config::Sv2ClientServiceConfig;
 use tower_stratum::client::service::config::Sv2ClientServiceTemplateDistributionConfig;
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
+use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use tower_stratum::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use tower_stratum::client::service::subprotocols::template_distribution::response::ResponseToTemplateDistributionTrigger;
 use tracing::info;
 
 pub struct MyTemplateDistributionClient {
-    sv2_client_service: Sv2ClientService<MyTemplateDistributionHandler>,
+    sv2_client_service: Sv2ClientService<NullSv2MiningClientHandler, MyTemplateDistributionHandler>,
     coinbase_output_max_additional_size: u32,
     coinbase_output_max_additional_sigops: u16,
 }
@@ -37,6 +38,7 @@ impl MyTemplateDistributionClient {
                 ),
                 server_addr: config.server_addr,
                 auth_pk: config.auth_pk,
+                setup_connection_flags: 0, // no flags for setup_connection
             }),
         };
 
@@ -44,9 +46,12 @@ impl MyTemplateDistributionClient {
         let template_distribution_handler = MyTemplateDistributionHandler::default();
 
         // Initialize the service with config and handler
-        let sv2_client_service =
-            Sv2ClientService::new(service_config, template_distribution_handler)
-                .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
+        let sv2_client_service = Sv2ClientService::new(
+            service_config,
+            NullSv2MiningClientHandler,
+            template_distribution_handler,
+        )
+        .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
 
         Ok(Self {
             sv2_client_service,

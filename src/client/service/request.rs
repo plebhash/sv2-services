@@ -1,3 +1,4 @@
+use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
@@ -8,10 +9,11 @@ use roles_logic_sv2::parsers::AnyMessage;
 #[derive(Debug, Clone)]
 pub enum RequestToSv2Client<'a> {
     /// Trigger for the client to initiate a connection to the server under some subprotocol.
-    SetupConnectionTrigger(Protocol),
+    SetupConnectionTrigger(Protocol, u32), // protocol, flags
     /// Some Sv2 message addressed to the client.
     /// Could belong to any subprotocol.
     Message(AnyMessage<'a>),
+    MiningTrigger(RequestToSv2MiningClientService),
     TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService),
     /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
@@ -29,6 +31,7 @@ pub enum RequestToSv2ClientError {
     StringConversionError(String),
     NoSiblingServerServiceIo,
     FailedToSendRequestToSiblingServerService,
+    U256ConversionError(String),
 }
 
 impl From<Sv2MessageIoError> for RequestToSv2ClientError {

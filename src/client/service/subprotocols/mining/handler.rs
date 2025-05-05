@@ -16,105 +16,105 @@ pub trait Sv2MiningClientHandler {
 
     fn handle_open_standard_mining_channel_success(
         &self,
-        _open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
+        open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_open_extended_mining_channel_success(
         &self,
-        _open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
+        open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
-    fn handle_open_standard_mining_channel_error(
+    fn handle_open_mining_channel_error(
         &self,
-        _open_standard_mining_channel_error: OpenMiningChannelError<'static>,
+        open_mining_channel_error: OpenMiningChannelError<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_update_channel_error(
         &self,
-        _update_channel_error: UpdateChannelError<'static>,
+        update_channel_error: UpdateChannelError<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_close_channel(
         &self,
-        _close_channel: CloseChannel<'static>,
+        close_channel: CloseChannel<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_extranonce_prefix(
         &self,
-        _set_extranonce_prefix: SetExtranoncePrefix<'static>,
+        set_extranonce_prefix: SetExtranoncePrefix<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_submit_shares_success(
         &self,
-        _submit_shares_success: SubmitSharesSuccess,
+        submit_shares_success: SubmitSharesSuccess,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_submit_shares_error(
         &self,
-        _submit_shares_error: SubmitSharesError,
+        submit_shares_error: SubmitSharesError,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_new_mining_job(
         &self,
-        _new_mining_job: NewMiningJob,
+        new_mining_job: NewMiningJob,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_new_extended_mining_job(
         &self,
-        _new_extended_mining_job: NewExtendedMiningJob,
+        new_extended_mining_job: NewExtendedMiningJob,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_new_prev_hash(
         &self,
-        _set_new_prev_hash: SetNewPrevHash,
+        set_new_prev_hash: SetNewPrevHash,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_custom_mining_job_success(
         &self,
-        _set_custom_mining_job_success: SetCustomMiningJobSuccess,
+        set_custom_mining_job_success: SetCustomMiningJobSuccess,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_custom_mining_job_error(
         &self,
-        _set_custom_mining_job_error: SetCustomMiningJobError,
+        set_custom_mining_job_error: SetCustomMiningJobError,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_target(
         &self,
-        _set_target: SetTarget,
+        set_target: SetTarget,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_group_channel(
         &self,
-        _set_group_channel: SetGroupChannel,
+        set_group_channel: SetGroupChannel,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
@@ -150,7 +150,7 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_open_extended_mining_channel_success");
     }
 
-    async fn handle_open_standard_mining_channel_error(
+    async fn handle_open_mining_channel_error(
         &self,
         _open_standard_mining_channel_error: OpenMiningChannelError<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {

@@ -56,6 +56,7 @@ impl MyConfig {
                 server_addr: SocketAddr::from_str("127.0.0.1:8442").unwrap(),
                 auth_pk: None,
                 coinbase_output_constraints: (1, 1),
+                setup_connection_flags: 0,
             }),
         };
         Self {

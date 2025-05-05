@@ -5,6 +5,7 @@ use template_distribution_handler::MyTemplateDistributionHandler;
 use tower_stratum::{
     client::service::{
         Sv2ClientService, request::RequestToSv2Client,
+        subprotocols::mining::handler::NullSv2MiningClientHandler,
         subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService,
     },
     server::service::Sv2ServerService,
@@ -64,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
     let client_config = config.client_config.clone();
     let mut client_service = Sv2ClientService::new_with_sibling_io(
         client_config,
+        NullSv2MiningClientHandler,
         tdc_handler,
         sibling_server_io, // <----- SiblingIO is passed here.
     )?;
@@ -122,6 +124,7 @@ mod tests {
     use integration_tests_sv2::{sniffer::MessageDirection, start_sniffer};
     use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
     use tower_stratum::{
+        client::service::subprotocols::mining::handler::NullSv2MiningClientHandler,
         client::service::{request::RequestToSv2ClientError, response::ResponseFromSv2Client},
         server::service::{
             request::RequestToSv2Server, subprotocols::mining::request::RequestToSv2MiningServer,
@@ -168,9 +171,13 @@ mod tests {
 
         // Create the Sv2ClientService and connect it to the server using the sibling IO.
         let client_config = config.client_config.clone();
-        let mut client_service =
-            Sv2ClientService::new_with_sibling_io(client_config, tdc_handler, sibling_server_io)
-                .unwrap();
+        let mut client_service = Sv2ClientService::new_with_sibling_io(
+            client_config,
+            NullSv2MiningClientHandler,
+            tdc_handler,
+            sibling_server_io,
+        )
+        .unwrap();
 
         // Start the server and client services.
         server_service.start().await.unwrap();
@@ -305,7 +312,12 @@ mod tests {
         let mut server_service =
             Sv2ServerService::new(config.server_config, mining_handler).unwrap();
         // Create the Sv2ClientService with a wrong constructor.
-        let mut client_service = Sv2ClientService::new(config.client_config, tdc_handler).unwrap();
+        let mut client_service = Sv2ClientService::new(
+            config.client_config,
+            NullSv2MiningClientHandler,
+            tdc_handler,
+        )
+        .unwrap();
 
         // Start the server and client services.
         server_service.start().await.unwrap();
