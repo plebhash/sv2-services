@@ -40,6 +40,7 @@ impl MyTemplateDistributionClient {
                 auth_pk: config.auth_pk,
                 setup_connection_flags: 0, // no flags for setup_connection
             }),
+            encrypted: true,
         };
 
         // Create the handler instance
