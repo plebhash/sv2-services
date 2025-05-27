@@ -1137,9 +1137,9 @@ mod tests {
 
     // A dummy mining handler that is not null, but not actually handling anything
     #[derive(Debug, Clone, Default)]
-    struct DummyMiningHandler;
+    struct DummyMiningClientHandler;
 
-    impl Sv2MiningClientHandler for DummyMiningHandler {
+    impl Sv2MiningClientHandler for DummyMiningClientHandler {
         fn poll_ready(
             &mut self,
             _cx: &mut Context<'_>,
@@ -1533,7 +1533,7 @@ mod tests {
             template_distribution_config: None,
         };
 
-        let mining_handler = DummyMiningHandler;
+        let mining_handler = DummyMiningClientHandler;
 
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
