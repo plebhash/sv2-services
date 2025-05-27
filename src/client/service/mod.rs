@@ -11,7 +11,8 @@ use crate::client::service::subprotocols::template_distribution::handler::NullSv
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use crate::client::service::subprotocols::template_distribution::response::ResponseToTemplateDistributionTrigger;
-use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
+use crate::client::tcp::Sv2TcpClient;
+
 use const_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
 use const_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
 use const_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL;
@@ -57,9 +58,9 @@ where
     T: Sv2TemplateDistributionClientHandler + Clone + Send + Sync + 'static,
 {
     config: Sv2ClientServiceConfig,
-    mining_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
-    job_declaration_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
-    template_distribution_tcp_client: Arc<RwLock<Option<Sv2EncryptedTcpClient>>>,
+    mining_tcp_client: Arc<RwLock<Option<Sv2TcpClient>>>,
+    job_declaration_tcp_client: Arc<RwLock<Option<Sv2TcpClient>>>,
+    template_distribution_tcp_client: Arc<RwLock<Option<Sv2TcpClient>>>,
     mining_handler: M,
     // todo: add job_declaration_handler: J,
     template_distribution_handler: T,
@@ -298,13 +299,17 @@ where
                             protocol: Protocol::MiningProtocol,
                         }
                     })?;
-                    let tcp_client = Sv2EncryptedTcpClient::new(config.server_addr, config.auth_pk)
-                        .await
-                        .ok_or_else(|| {
-                            RequestToSv2ClientError::ConnectionError(
-                                "Failed to create TCP client".to_string(),
-                            )
-                        })?;
+                    let tcp_client = Sv2TcpClient::new(
+                        config.server_addr,
+                        self.config.encrypted,
+                        config.auth_pk,
+                    )
+                    .await
+                    .ok_or_else(|| {
+                        RequestToSv2ClientError::ConnectionError(
+                            "Failed to create TCP client".to_string(),
+                        )
+                    })?;
                     self.mining_tcp_client
                         .write()
                         .await
@@ -326,13 +331,17 @@ where
                             protocol: Protocol::JobDeclarationProtocol,
                         }
                     })?;
-                    let tcp_client = Sv2EncryptedTcpClient::new(config.server_addr, config.auth_pk)
-                        .await
-                        .ok_or_else(|| {
-                            RequestToSv2ClientError::ConnectionError(
-                                "Failed to create TCP client".to_string(),
-                            )
-                        })?;
+                    let tcp_client = Sv2TcpClient::new(
+                        config.server_addr,
+                        self.config.encrypted,
+                        config.auth_pk,
+                    )
+                    .await
+                    .ok_or_else(|| {
+                        RequestToSv2ClientError::ConnectionError(
+                            "Failed to create TCP client".to_string(),
+                        )
+                    })?;
                     self.job_declaration_tcp_client
                         .write()
                         .await
@@ -356,13 +365,17 @@ where
                         .ok_or_else(|| RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::TemplateDistributionProtocol,
                         })?;
-                    let tcp_client = Sv2EncryptedTcpClient::new(config.server_addr, config.auth_pk)
-                        .await
-                        .ok_or_else(|| {
-                            RequestToSv2ClientError::ConnectionError(
-                                "Failed to create TCP client".to_string(),
-                            )
-                        })?;
+                    let tcp_client = Sv2TcpClient::new(
+                        config.server_addr,
+                        self.config.encrypted,
+                        config.auth_pk,
+                    )
+                    .await
+                    .ok_or_else(|| {
+                        RequestToSv2ClientError::ConnectionError(
+                            "Failed to create TCP client".to_string(),
+                        )
+                    })?;
                     self.template_distribution_tcp_client
                         .write()
                         .await
@@ -411,13 +424,13 @@ where
 
         // Send the setup connection message using the io field
         tcp_client
-            .io
+            .io()
             .send_message(setup_connection.into(), MESSAGE_TYPE_SETUP_CONNECTION)
             .await?;
 
         // wait for the server to respond with a SetupConnectionSuccess or SetupConnectionError
         // and return the appropriate response
-        let (message, _) = tcp_client.io.recv_message().await?;
+        let (message, _) = tcp_client.io().recv_message().await?;
         match message {
             AnyMessage::Common(CommonMessages::SetupConnectionSuccess(
                 setup_connection_success,
@@ -452,7 +465,7 @@ where
             return Err(RequestToSv2ClientError::IsNotConnected);
         }
 
-        let tcp_client: Sv2EncryptedTcpClient = match protocol {
+        let tcp_client: Sv2TcpClient = match protocol {
             Protocol::MiningProtocol => match self.mining_tcp_client.read().await.as_ref() {
                 Some(client) => client.clone(),
                 None => return Err(RequestToSv2ClientError::IsNotConnected),
@@ -479,7 +492,7 @@ where
                     debug!("Message listener received shutdown signal");
                     break;
                 }
-                message_result = tcp_client.io.recv_message() => {
+                message_result = tcp_client.io().recv_message() => {
                     match message_result {
                         Ok((message, _)) => {
                             if let Err(e) = self.call(RequestToSv2Client::Message(message)).await {
@@ -899,7 +912,7 @@ where
                         );
 
                         let result = tcp_client
-                            .io
+                            .io()
                             .send_message(
                                 open_standard_mining_channel,
                                 MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
@@ -968,7 +981,7 @@ where
                         );
 
                         let result = tcp_client
-                            .io
+                            .io()
                             .send_message(
                                 open_extended_mining_channel,
                                 MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL,
@@ -1023,7 +1036,7 @@ where
                             ),
                         );
                         let result = tcp_client
-                            .io
+                            .io()
                             .send_message(
                                 coinbase_output_constraints,
                                 MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
@@ -1465,6 +1478,7 @@ mod tests {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: Some(template_distribution_config.clone()),
+            encrypted: true,
         };
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
@@ -1531,6 +1545,7 @@ mod tests {
             }),
             job_declaration_config: None,
             template_distribution_config: None,
+            encrypted: true,
         };
 
         let mining_handler = DummyMiningClientHandler;
@@ -1590,6 +1605,7 @@ mod tests {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: None,
+            encrypted: true,
         };
 
         // add a dummy template distribution handler to (which is not null)
@@ -1628,6 +1644,7 @@ mod tests {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: Some(template_distribution_config), // we are signaling that we support template distribution
+            encrypted: true,
         };
 
         // but now we are using a null template distribution handler, which is also not allowed
@@ -1664,6 +1681,7 @@ mod tests {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: Some(template_distribution_config),
+            encrypted: true,
         };
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
@@ -1718,6 +1736,7 @@ mod tests {
             mining_config: None,
             job_declaration_config: None,
             template_distribution_config: Some(template_distribution_config.clone()),
+            encrypted: true,
         };
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;

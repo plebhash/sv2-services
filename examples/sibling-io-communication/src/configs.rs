@@ -33,6 +33,7 @@ impl MyConfig {
                 )
                 .unwrap(),
                 cert_validity: 3600,
+                encrypted: true
             },
             mining_config: Some(Sv2ServerServiceMiningConfig {
                 supported_flags: 0b0101,
@@ -58,6 +59,7 @@ impl MyConfig {
                 coinbase_output_constraints: (1, 1),
                 setup_connection_flags: 0,
             }),
+            encrypted: true,
         };
         Self {
             server_config,

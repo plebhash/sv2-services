@@ -37,6 +37,7 @@ impl MyMiningClient {
             }),
             job_declaration_config: None,
             template_distribution_config: None,
+            encrypted: true
         };
 
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
