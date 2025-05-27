@@ -824,9 +824,7 @@ where
                             io.send(*req.clone()).map_err(|_| {
                                 RequestToSv2ServerError::FailedToSendRequestToSiblingClientService
                             })?;
-                            Ok(ResponseFromSv2Server::SentRequestToSiblingClientService(
-                                *req,
-                            ))
+                            Ok(ResponseFromSv2Server::Ok)
                         }
                         None => {
                             error!("No sibling client service on Sv2ServerService");
@@ -861,9 +859,7 @@ where
 
                 match io.send_message(message, message_type).await {
                     Ok(_) => {
-                        return Ok(ResponseFromSv2Server::SentReplyToClient(
-                            sv2_message_to_client,
-                        ))
+                        return Ok(ResponseFromSv2Server::Ok);
                     }
                     Err(_) => return Err(RequestToSv2ServerError::FailedToSendResponseToClient),
                 }

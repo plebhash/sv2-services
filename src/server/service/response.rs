@@ -1,6 +1,5 @@
 use roles_logic_sv2::parsers::AnyMessage;
 
-use crate::client::service::request::RequestToSv2Client;
 use crate::server::service::request::RequestToSv2Server;
 /// A reply containing a Sv2 message, to be delivered back to the client.
 #[derive(Debug, Clone)]
@@ -15,9 +14,6 @@ pub struct Sv2MessageToClient<'a> {
 pub enum ResponseFromSv2Server<'a> {
     // triggers the service to send a reply to the client
     SendReplyToClient(Sv2MessageToClient<'a>),
-    // indicates that the service has sent a reply to the client
-    SentReplyToClient(Sv2MessageToClient<'a>),
-    SentRequestToSiblingClientService(RequestToSv2Client<'a>),
     TriggerNewRequest(RequestToSv2Server<'a>),
-    ToDo, // dummy placeholder for future response types (e.g.: Relay)
+    Ok,
 }

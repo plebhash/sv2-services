@@ -29,7 +29,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             "received OpenStandardMiningChannel.Success: {:?}",
             open_standard_mining_channel_success
         );
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_open_extended_mining_channel_success(
@@ -40,7 +40,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             "received OpenExtendedMiningChannel.Success: {:?}",
             open_extended_mining_channel_success
         );
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_open_mining_channel_error(
@@ -51,7 +51,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             "received OpenMiningChannel.Error: {:?}",
             open_standard_mining_channel_error
         );
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_update_channel_error(
@@ -59,7 +59,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         update_channel_error: UpdateChannelError<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received UpdateChannel.Error: {:?}", update_channel_error);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_close_channel(
@@ -75,7 +75,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         set_extranonce_prefix: SetExtranoncePrefix<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SetExtranoncePrefix: {:?}", set_extranonce_prefix);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_submit_shares_success(
@@ -83,7 +83,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         submit_shares_success: SubmitSharesSuccess,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SubmitShares.Success: {:?}", submit_shares_success);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_submit_shares_error(
@@ -91,7 +91,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         submit_shares_error: SubmitSharesError<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SubmitShares.Error: {:?}", submit_shares_error);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_new_mining_job(
@@ -99,7 +99,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         new_mining_job: NewMiningJob<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received NewMiningJob: {:?}", new_mining_job);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_new_extended_mining_job(
@@ -110,7 +110,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             "received NewExtendedMiningJob: {:?}",
             _new_extended_mining_job
         );
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_set_new_prev_hash(
@@ -119,7 +119,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SetNewPrevHash: {:?}", _set_new_prev_hash);
         // todo!()
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_set_custom_mining_job_success(
@@ -141,7 +141,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         _set_target: SetTarget<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SetTarget: {:?}", _set_target);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 
     async fn handle_set_group_channel(
@@ -149,6 +149,6 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         _set_group_channel: SetGroupChannel<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SetGroupChannel: {:?}", _set_group_channel);
-        Ok(ResponseFromSv2Client::ToDo)
+        Ok(ResponseFromSv2Client::Ok)
     }
 }

@@ -9,7 +9,6 @@ use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use tower_stratum::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
-use tower_stratum::client::service::subprotocols::template_distribution::response::ResponseToTemplateDistributionTrigger;
 use tracing::info;
 
 pub struct MyTemplateDistributionClient {
@@ -83,9 +82,7 @@ impl MyTemplateDistributionClient {
             .map_err(|e| anyhow!("Failed to request coinbase output constraints: {:?}", e))?;
 
         match set_coinbase_output_constraints_response {
-            ResponseFromSv2Client::ResponseToTemplateDistributionTrigger(
-                ResponseToTemplateDistributionTrigger::SuccessfullySetCoinbaseOutputConstraints,
-            ) => {
+            ResponseFromSv2Client::Ok => {
                 info!("Coinbase output constraints set");
             }
             _ => {
