@@ -1255,9 +1255,9 @@ mod tests {
 
     // A dummy template distribution handler that is not null, but not actually handling anything
     #[derive(Debug, Clone, Default)]
-    struct DummyTemplateDistributionHandler;
+    struct DummyTemplateDistributionClientHandler;
 
-    impl Sv2TemplateDistributionClientHandler for DummyTemplateDistributionHandler {
+    impl Sv2TemplateDistributionClientHandler for DummyTemplateDistributionClientHandler {
         fn poll_ready(
             &mut self,
             _cx: &mut Context<'_>,
@@ -1467,7 +1467,7 @@ mod tests {
             template_distribution_config: Some(template_distribution_config.clone()),
         };
 
-        let template_distribution_handler = DummyTemplateDistributionHandler;
+        let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
@@ -1593,7 +1593,7 @@ mod tests {
         };
 
         // add a dummy template distribution handler to (which is not null)
-        let template_distribution_handler = DummyTemplateDistributionHandler;
+        let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
         let result = Sv2ClientService::new(
             config,
@@ -1666,7 +1666,7 @@ mod tests {
             template_distribution_config: Some(template_distribution_config),
         };
 
-        let template_distribution_handler = DummyTemplateDistributionHandler;
+        let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
@@ -1720,7 +1720,7 @@ mod tests {
             template_distribution_config: Some(template_distribution_config.clone()),
         };
 
-        let template_distribution_handler = DummyTemplateDistributionHandler;
+        let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
