@@ -6,11 +6,9 @@ use crate::client::service::sibling::Sv2SiblingServerServiceIo;
 use crate::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use crate::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
 use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
-use crate::client::service::subprotocols::mining::response::ResponseToMiningTrigger;
 use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
-use crate::client::service::subprotocols::template_distribution::response::ResponseToTemplateDistributionTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
 use const_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
 use const_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
@@ -908,7 +906,7 @@ where
                         match result {
                             Ok(_) => {
                                 debug!("Successfully sent OpenStandardMiningChannel");
-                                Ok(ResponseFromSv2Client::ResponseToMiningTrigger(ResponseToMiningTrigger::SuccessfullySentOpenStandardMiningChannelMessage))
+                                Ok(ResponseFromSv2Client::Ok)
                             }
                             Err(e) => Err(e.into()),
                         }
@@ -977,7 +975,7 @@ where
                         match result {
                             Ok(_) => {
                                 debug!("Successfully sent OpenExtendedMiningChannel");
-                                Ok(ResponseFromSv2Client::ResponseToMiningTrigger(ResponseToMiningTrigger::SuccessfullySentOpenExtendedMiningChannelMessage))
+                                Ok(ResponseFromSv2Client::Ok)
                             }
                             Err(e) => Err(e.into()),
                         }
@@ -1038,7 +1036,7 @@ where
                                     .expect("template_distribution_config should be Some")
                                     .coinbase_output_constraints =
                                     (max_additional_size, max_additional_sigops);
-                                Ok(ResponseFromSv2Client::ResponseToTemplateDistributionTrigger(ResponseToTemplateDistributionTrigger::SuccessfullySetCoinbaseOutputConstraints))
+                                Ok(ResponseFromSv2Client::Ok)
                             }
                             Err(e) => Err(e.into()),
                         }
@@ -1057,9 +1055,7 @@ where
                             io.send(*req.clone()).map_err(|_| {
                                 RequestToSv2ClientError::FailedToSendRequestToSiblingServerService
                             })?;
-                            Ok(ResponseFromSv2Client::SentRequestToSiblingServerService(
-                                *req,
-                            ))
+                            Ok(ResponseFromSv2Client::Ok)
                         }
                         None => {
                             error!("No sibling server service on Sv2ClientService");
@@ -1364,14 +1360,14 @@ mod tests {
             &self,
             _m: NewTemplate<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn on_set_new_prev_hash(
             &self,
             _m: SetNewPrevHash<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         fn setup_connection_success_flags(&self) -> u32 {
@@ -1389,7 +1385,7 @@ mod tests {
             _client_id: u32,
             _m: OpenStandardMiningChannel<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_open_extended_mining_channel(
@@ -1397,7 +1393,7 @@ mod tests {
             _client_id: u32,
             _m: OpenExtendedMiningChannel<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_update_channel(
@@ -1405,7 +1401,7 @@ mod tests {
             _client_id: u32,
             _m: UpdateChannel<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_close_channel(
@@ -1413,7 +1409,7 @@ mod tests {
             _client_id: u32,
             _m: CloseChannel<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_submit_shares_standard(
@@ -1421,7 +1417,7 @@ mod tests {
             _client_id: u32,
             _m: SubmitSharesStandard,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_submit_shares_extended(
@@ -1429,7 +1425,7 @@ mod tests {
             _client_id: u32,
             _m: SubmitSharesExtended<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
 
         async fn handle_set_custom_mining_job(
@@ -1437,7 +1433,7 @@ mod tests {
             _client_id: u32,
             _m: SetCustomMiningJob<'static>,
         ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
-            Ok(ResponseFromSv2Server::ToDo)
+            Ok(ResponseFromSv2Server::Ok)
         }
     }
 
@@ -1918,9 +1914,7 @@ mod tests {
         // Assert that the response was sent to the sibling server.
         assert!(matches!(
             new_template_response.as_ref().unwrap(),
-            ResponseFromSv2Client::SentRequestToSiblingServerService(
-                RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(_))
-            )
+            ResponseFromSv2Client::Ok
         ));
 
         // Create a dummy SetNewPrevHash message to simulate a new previous hash.
@@ -1943,12 +1937,7 @@ mod tests {
             .unwrap();
 
         // Assert that the response from the MiningServerHandler is received.
-        assert!(matches!(
-            new_prev_hash_response,
-            ResponseFromSv2Client::SentRequestToSiblingServerService(
-                RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(_))
-            )
-        ));
+        assert!(matches!(new_prev_hash_response, ResponseFromSv2Client::Ok));
 
         // Shutdown the server and client services gracefully.
         server_service.shutdown().await;

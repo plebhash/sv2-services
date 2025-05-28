@@ -30,9 +30,7 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
             "MiningServer: Received new template"
         );
 
-        // Store the latest template ID for assertions in tests
-
-        Ok(ResponseFromSv2Server::ToDo)
+        Ok(ResponseFromSv2Server::Ok)
     }
 
     async fn on_set_new_prev_hash(
@@ -40,7 +38,7 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         m: SetNewPrevHash<'static>,
     ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
         info!(prev_hash = ?m.prev_hash, "MiningServer: Received new previous hash");
-        Ok(ResponseFromSv2Server::ToDo)
+        Ok(ResponseFromSv2Server::Ok)
     }
 
     fn setup_connection_success_flags(&self) -> u32 {

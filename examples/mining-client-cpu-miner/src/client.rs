@@ -7,7 +7,6 @@ use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
-use tower_stratum::client::service::subprotocols::mining::response::ResponseToMiningTrigger;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use tower_stratum::tower::{Service, ServiceExt};
 use tracing::info;
@@ -85,9 +84,7 @@ impl MyMiningClient {
                     .map_err(|e| anyhow!("Failed to open standard mining channel: {:?}", e))?;
 
                 match open_standard_mining_channel_response {
-                    ResponseFromSv2Client::ResponseToMiningTrigger(
-                        ResponseToMiningTrigger::SuccessfullySentOpenStandardMiningChannelMessage,
-                    ) => {
+                    ResponseFromSv2Client::Ok => {
                         info!("Successfully sent open standard mining channel request");
                     }
                     _ => {
@@ -111,9 +108,7 @@ impl MyMiningClient {
                     .map_err(|e| anyhow!("Failed to open extended mining channel: {:?}", e))?;
 
                 match open_extended_mining_channel_response {
-                    ResponseFromSv2Client::ResponseToMiningTrigger(
-                        ResponseToMiningTrigger::SuccessfullySentOpenExtendedMiningChannelMessage,
-                    ) => {
+                    ResponseFromSv2Client::Ok => {
                         info!("Successfully sent open extended mining channel request");
                     }
                     _ => {
