@@ -30,8 +30,6 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
             "MiningServer: Received new template"
         );
 
-        // Store the latest template ID for assertions in tests
-
         Ok(ResponseFromSv2Server::Ok)
     }
 
