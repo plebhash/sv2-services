@@ -1029,6 +1029,9 @@ where
                             todo!()
                         }
                     }
+                    RequestToSv2TemplateDistributionClientService::SubmitSolution(
+                        submit_solution,
+                    ) => todo!(),
                 }
                 RequestToSv2Client::SendRequestToSiblingServerService(req) => {
                     debug!("Sv2ClientService received a SendRequestToSiblingServerService request");
