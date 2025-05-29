@@ -844,210 +844,192 @@ where
                         _ => todo!(),
                     }
                 }
-                RequestToSv2Client::MiningTrigger(request) => match request {
-                    RequestToSv2MiningClientService::OpenStandardMiningChannel(
-                        request_id,
-                        user_identity,
-                        nominal_hash_rate,
-                        max_target,
-                    ) => {
-                        debug!("Sv2ClientService received a trigger request for sending OpenStandardMiningChannel");
-
-                        // check if this service is configured for mining
-                        if this.config.mining_config.is_none()
-                            || std::any::TypeId::of::<M>()
-                                == std::any::TypeId::of::<NullSv2MiningClientHandler>()
-                        {
-                            return Err(RequestToSv2ClientError::UnsupportedProtocol {
-                                protocol: Protocol::MiningProtocol,
-                            });
-                        }
-
-                        if !this.is_connected(Protocol::MiningProtocol).await {
-                            return Err(RequestToSv2ClientError::IsNotConnected);
-                        }
-
-                        let tcp_client = this
-                            .mining_tcp_client
-                            .read()
-                            .await
-                            .as_ref()
-                            .expect("mining_tcp_client should be Some")
-                            .clone();
-                        let open_standard_mining_channel = AnyMessage::Mining(
-                            Mining::OpenStandardMiningChannel(OpenStandardMiningChannel {
-                                request_id: request_id.into(),
-                                user_identity: user_identity
-                                    .clone()
-                                    .into_bytes()
-                                    .try_into()
-                                    .map_err(|_| {
-                                        RequestToSv2ClientError::StringConversionError(format!(
-                                        "Failed to convert user_identity '{}' to fixed-size array",
-                                        user_identity
-                                    ))
-                                    })?,
-                                nominal_hash_rate: nominal_hash_rate.into(),
-                                max_target: max_target.try_into().map_err(|_| {
-                                    RequestToSv2ClientError::U256ConversionError(format!(
-                                        "Failed to convert max_target to fixed-size array"
-                                    ))
-                                })?,
-                            }),
-                        );
-
-                        let result = tcp_client
-                            .io
-                            .send_message(
-                                open_standard_mining_channel,
-                                MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
-                            )
-                            .await;
-                        match result {
-                            Ok(_) => {
-                                debug!("Successfully sent OpenStandardMiningChannel");
-                                Ok(ResponseFromSv2Client::Ok)
-                            }
-                            Err(e) => Err(e.into()),
-                        }
+                RequestToSv2Client::MiningTrigger(request) => {
+                    if this.config.mining_config.is_none()
+                        || std::any::TypeId::of::<M>()
+                            == std::any::TypeId::of::<NullSv2MiningClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::MiningProtocol,
+                        });
                     }
-                    RequestToSv2MiningClientService::OpenExtendedMiningChannel(
-                        request_id,
-                        user_identity,
-                        nominal_hash_rate,
-                        max_target,
-                        min_rollable_extranonce_size,
-                    ) => {
-                        debug!("Sv2ClientService received a trigger request for sending OpenExtendedMiningChannel");
-
-                        // check if this service is configured for mining
-                        if this.config.mining_config.is_none()
-                            || std::any::TypeId::of::<M>()
-                                == std::any::TypeId::of::<NullSv2MiningClientHandler>()
-                        {
-                            return Err(RequestToSv2ClientError::UnsupportedProtocol {
-                                protocol: Protocol::MiningProtocol,
-                            });
-                        }
-
-                        if !this.is_connected(Protocol::MiningProtocol).await {
-                            return Err(RequestToSv2ClientError::IsNotConnected);
-                        }
-
-                        let tcp_client = this
-                            .mining_tcp_client
-                            .read()
-                            .await
-                            .as_ref()
-                            .expect("mining_tcp_client should be Some")
-                            .clone();
-
-                        let open_extended_mining_channel = AnyMessage::Mining(
-                            Mining::OpenExtendedMiningChannel(OpenExtendedMiningChannel {
-                                request_id: request_id.into(),
-                                user_identity: user_identity
-                                    .clone()
-                                    .into_bytes()
-                                    .try_into()
-                                    .map_err(|_| {
-                                        RequestToSv2ClientError::StringConversionError(format!(
-                                        "Failed to convert user_identity '{}' to fixed-size array",
-                                        user_identity,
-                                    ))
-                                    })?,
-                                nominal_hash_rate: nominal_hash_rate.into(),
-                                max_target: max_target.try_into().map_err(|_| {
-                                    RequestToSv2ClientError::U256ConversionError(format!(
-                                        "Failed to convert max_target to fixed-size array"
-                                    ))
-                                })?,
-                                min_extranonce_size: min_rollable_extranonce_size.into(),
-                            }),
-                        );
-
-                        let result = tcp_client
-                            .io
-                            .send_message(
-                                open_extended_mining_channel,
-                                MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL,
-                            )
-                            .await;
-                        match result {
-                            Ok(_) => {
-                                debug!("Successfully sent OpenExtendedMiningChannel");
-                                Ok(ResponseFromSv2Client::Ok)
-                            }
-                            Err(e) => Err(e.into()),
-                        }
+                    if !this.is_connected(Protocol::MiningProtocol).await {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
                     }
-                },
-                RequestToSv2Client::TemplateDistributionTrigger(request) => match request {
-                    RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
-                        max_additional_size,
-                        max_additional_sigops,
-                    ) => {
-                        debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
+                    match request {
+                        RequestToSv2MiningClientService::OpenStandardMiningChannel(
+                            request_id,
+                            user_identity,
+                            nominal_hash_rate,
+                            max_target,
+                        ) => {
+                            debug!("Sv2ClientService received a trigger request for sending OpenStandardMiningChannel");
+                            let tcp_client = this
+                                .mining_tcp_client
+                                .read()
+                                .await
+                                .as_ref()
+                                .expect("mining_tcp_client should be Some")
+                                .clone();
+                            let open_standard_mining_channel = AnyMessage::Mining(
+                                Mining::OpenStandardMiningChannel(OpenStandardMiningChannel {
+                                    request_id: request_id.into(),
+                                    user_identity: user_identity
+                                        .clone()
+                                        .into_bytes()
+                                        .try_into()
+                                        .map_err(|_| {
+                                            RequestToSv2ClientError::StringConversionError(format!(
+                                            "Failed to convert user_identity '{}' to fixed-size array",
+                                            user_identity
+                                        ))
+                                        })?,
+                                    nominal_hash_rate: nominal_hash_rate.into(),
+                                    max_target: max_target.try_into().map_err(|_| {
+                                        RequestToSv2ClientError::U256ConversionError(format!(
+                                            "Failed to convert max_target to fixed-size array"
+                                        ))
+                                    })?,
+                                }),
+                            );
 
-                        // check if this service is configured for template distribution
-                        if this.config.template_distribution_config.is_none()
-                            || std::any::TypeId::of::<T>()
-                                == std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>(
+                            let result = tcp_client
+                                .io
+                                .send_message(
+                                    open_standard_mining_channel,
+                                    MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
                                 )
-                        {
-                            return Err(RequestToSv2ClientError::UnsupportedProtocol {
-                                protocol: Protocol::TemplateDistributionProtocol,
-                            });
-                        }
-                        if !this
-                            .is_connected(Protocol::TemplateDistributionProtocol)
-                            .await
-                        {
-                            return Err(RequestToSv2ClientError::IsNotConnected);
-                        }
-
-                        let tcp_client = this
-                            .template_distribution_tcp_client
-                            .read()
-                            .await
-                            .as_ref()
-                            .expect("template_distribution_tcp_client should be Some")
-                            .clone();
-                        let coinbase_output_constraints = AnyMessage::TemplateDistribution(
-                            TemplateDistribution::CoinbaseOutputConstraints(
-                                CoinbaseOutputConstraints {
-                                    coinbase_output_max_additional_size: max_additional_size,
-                                    coinbase_output_max_additional_sigops: max_additional_sigops,
-                                },
-                            ),
-                        );
-                        let result = tcp_client
-                            .io
-                            .send_message(
-                                coinbase_output_constraints,
-                                MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
-                            )
-                            .await;
-                        match result {
-                            Ok(_) => {
-                                debug!("Successfully set CoinbaseOutputConstraints");
-                                this.config
-                                    .template_distribution_config
-                                    .as_mut()
-                                    .expect("template_distribution_config should be Some")
-                                    .coinbase_output_constraints =
-                                    (max_additional_size, max_additional_sigops);
-                                Ok(ResponseFromSv2Client::Ok)
+                                .await;
+                            match result {
+                                Ok(_) => {
+                                    debug!("Successfully sent OpenStandardMiningChannel");
+                                    Ok(ResponseFromSv2Client::Ok)
+                                }
+                                Err(e) => Err(e.into()),
                             }
-                            Err(e) => Err(e.into()),
+                        }
+                        RequestToSv2MiningClientService::OpenExtendedMiningChannel(
+                            request_id,
+                            user_identity,
+                            nominal_hash_rate,
+                            max_target,
+                            min_rollable_extranonce_size,
+                        ) => {
+                            debug!("Sv2ClientService received a trigger request for sending OpenExtendedMiningChannel");
+                            let tcp_client = this
+                                .mining_tcp_client
+                                .read()
+                                .await
+                                .as_ref()
+                                .expect("mining_tcp_client should be Some")
+                                .clone();
+
+                            let open_extended_mining_channel = AnyMessage::Mining(
+                                Mining::OpenExtendedMiningChannel(OpenExtendedMiningChannel {
+                                    request_id: request_id.into(),
+                                    user_identity: user_identity
+                                        .clone()
+                                        .into_bytes()
+                                        .try_into()
+                                        .map_err(|_| {
+                                            RequestToSv2ClientError::StringConversionError(format!(
+                                            "Failed to convert user_identity '{}' to fixed-size array",
+                                            user_identity,
+                                        ))
+                                        })?,
+                                    nominal_hash_rate: nominal_hash_rate.into(),
+                                    max_target: max_target.try_into().map_err(|_| {
+                                        RequestToSv2ClientError::U256ConversionError(format!(
+                                            "Failed to convert max_target to fixed-size array"
+                                        ))
+                                    })?,
+                                    min_extranonce_size: min_rollable_extranonce_size.into(),
+                                }),
+                            );
+
+                            let result = tcp_client
+                                .io
+                                .send_message(
+                                    open_extended_mining_channel,
+                                    MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL,
+                                )
+                                .await;
+                            match result {
+                                Ok(_) => {
+                                    debug!("Successfully sent OpenExtendedMiningChannel");
+                                    Ok(ResponseFromSv2Client::Ok)
+                                }
+                                Err(e) => Err(e.into()),
+                            }
                         }
                     }
-                    RequestToSv2TemplateDistributionClientService::TransactionDataNeeded(
-                        _template_id,
-                    ) => {
-                        debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
-                        todo!()
+                }
+                RequestToSv2Client::TemplateDistributionTrigger(request) => {
+                    // check if this service is configured for template distribution
+                    if this.config.template_distribution_config.is_none()
+                        || std::any::TypeId::of::<T>()
+                            == std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::TemplateDistributionProtocol,
+                        });
                     }
-                },
+                    if !this
+                        .is_connected(Protocol::TemplateDistributionProtocol)
+                        .await
+                    {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
+                    }
+                    match request {
+                        RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                            max_additional_size,
+                            max_additional_sigops,
+                        ) => {
+                            debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
+                            let tcp_client = this
+                                .template_distribution_tcp_client
+                                .read()
+                                .await
+                                .as_ref()
+                                .expect("template_distribution_tcp_client should be Some")
+                                .clone();
+                            let coinbase_output_constraints = AnyMessage::TemplateDistribution(
+                                TemplateDistribution::CoinbaseOutputConstraints(
+                                    CoinbaseOutputConstraints {
+                                        coinbase_output_max_additional_size: max_additional_size,
+                                        coinbase_output_max_additional_sigops: max_additional_sigops,
+                                    },
+                                ),
+                            );
+                            let result = tcp_client
+                                .io
+                                .send_message(
+                                    coinbase_output_constraints,
+                                    MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
+                                )
+                                .await;
+                            match result {
+                                Ok(_) => {
+                                    debug!("Successfully set CoinbaseOutputConstraints");
+                                    this.config
+                                        .template_distribution_config
+                                        .as_mut()
+                                        .expect("template_distribution_config should be Some")
+                                        .coinbase_output_constraints =
+                                        (max_additional_size, max_additional_sigops);
+                                    Ok(ResponseFromSv2Client::Ok)
+                                }
+                                Err(e) => Err(e.into()),
+                            }
+                        }
+                        RequestToSv2TemplateDistributionClientService::TransactionDataNeeded(
+                            _template_id,
+                        ) => {
+                            debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
+                            todo!()
+                        }
+                    }
+                }
                 RequestToSv2Client::SendRequestToSiblingServerService(req) => {
                     debug!("Sv2ClientService received a SendRequestToSiblingServerService request");
                     match this.sibling_server_service_io {
