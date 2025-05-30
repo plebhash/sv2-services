@@ -10,10 +10,10 @@ use crate::client::service::subprotocols::template_distribution::handler::NullSv
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
-use const_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
 use const_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
 use const_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL;
 use const_sv2::MESSAGE_TYPE_SETUP_CONNECTION;
+use const_sv2::{MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_SUBMIT_SOLUTION};
 use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
 use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
 use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
@@ -1022,6 +1022,39 @@ where
                             debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
                             todo!()
                         }
+                        RequestToSv2TemplateDistributionClientService::SubmitSolution(
+                            submit_solution,
+                        ) => {
+                            debug!("Sv2ClientService received a trigger request for sending SubmitSolution");
+                            if !this
+                                .is_connected(Protocol::TemplateDistributionProtocol)
+                                .await
+                            {
+                                return Err(RequestToSv2ClientError::IsNotConnected);
+                            }
+
+                            let tcp_client = this
+                                .template_distribution_tcp_client
+                                .read()
+                                .await
+                                .as_ref()
+                                .expect("template_distribution_tcp_client should be Some")
+                                .clone();
+                            let submit_solution = AnyMessage::TemplateDistribution(
+                                TemplateDistribution::SubmitSolution(submit_solution),
+                            );
+                            let result = tcp_client
+                                .io
+                                .send_message(submit_solution, MESSAGE_TYPE_SUBMIT_SOLUTION)
+                                .await;
+                            match result {
+                                Ok(_) => {
+                                    debug!("Successfully sent SubmitSolution");
+                                    Ok(ResponseFromSv2Client::Ok)
+                                }
+                                Err(e) => Err(e.into()),
+                            }
+                        }
                     }
                 }
                 RequestToSv2Client::SendRequestToSiblingServerService(req) => {
@@ -2020,5 +2053,75 @@ mod tests {
         // Shutdown the server and client services gracefully.
         server_service.shutdown().await;
         client_service.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn sv2_client_service_submit_solution() {
+        use crate::client::service::request::RequestToSv2Client;
+        use crate::client::service::response::ResponseFromSv2Client;
+        use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+        use roles_logic_sv2::common_messages_sv2::Protocol;
+        use roles_logic_sv2::template_distribution_sv2::SubmitSolution;
+
+        // Start a TemplateProvider
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+
+        let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
+            coinbase_output_constraints: (1, 1),
+            server_addr: tp_addr,
+            auth_pk: None,
+            setup_connection_flags: 0,
+        };
+
+        let sv2_client_service_config = Sv2ClientServiceConfig {
+            min_supported_version: 2,
+            max_supported_version: 2,
+            endpoint_host: Some("localhost".to_string()),
+            endpoint_port: Some(8080),
+            vendor: Some("test".to_string()),
+            hardware_version: Some("test".to_string()),
+            firmware: Some("test".to_string()),
+            device_id: Some("test".to_string()),
+            mining_config: None,
+            job_declaration_config: None,
+            template_distribution_config: Some(template_distribution_config.clone()),
+        };
+
+        let template_distribution_handler = DummyTemplateDistributionClientHandler;
+
+        let mut sv2_client_service = Sv2ClientService::new(
+            sv2_client_service_config,
+            NullSv2MiningClientHandler,
+            template_distribution_handler,
+        )
+        .unwrap();
+
+        // Connect to the server
+        sv2_client_service.ready().await.unwrap();
+        let initiate_connection_request = RequestToSv2Client::SetupConnectionTrigger(
+            Protocol::TemplateDistributionProtocol,
+            template_distribution_config.setup_connection_flags,
+        );
+        let response = sv2_client_service
+            .call(initiate_connection_request)
+            .await
+            .unwrap();
+        assert!(matches!(response, ResponseFromSv2Client::Ok));
+
+        // Construct a dummy SubmitSolution message
+        let submit_solution = SubmitSolution {
+            template_id: 0,
+            version: 0,
+            header_timestamp: 0,
+            header_nonce: 0,
+            coinbase_tx: binary_codec_sv2::B064K::Owned(vec![]),
+        };
+
+        let submit_solution_request = RequestToSv2Client::TemplateDistributionTrigger(
+            RequestToSv2TemplateDistributionClientService::SubmitSolution(submit_solution),
+        );
+
+        let response = sv2_client_service.call(submit_solution_request).await;
+        assert!(matches!(response, Ok(ResponseFromSv2Client::Ok)));
     }
 }

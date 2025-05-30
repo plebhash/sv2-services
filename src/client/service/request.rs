@@ -14,7 +14,7 @@ pub enum RequestToSv2Client<'a> {
     /// Could belong to any subprotocol.
     Message(AnyMessage<'a>),
     MiningTrigger(RequestToSv2MiningClientService),
-    TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService),
+    TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService<'a>),
     /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
 }
