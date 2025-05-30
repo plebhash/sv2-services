@@ -97,17 +97,13 @@ impl Sv2MessageIo {
                             let message = Self::into_static(message);
                             Ok((message, message_type))
                         }
-                        _ => {
-                            return Err(Sv2MessageIoError::FrameError);
-                        }
+                        _ => Err(Sv2MessageIoError::FrameError),
                     }
                 } else {
-                    return Err(Sv2MessageIoError::FrameError);
+                    Err(Sv2MessageIoError::FrameError)
                 }
             }
-            Frame::HandShake(_) => {
-                return Err(Sv2MessageIoError::FrameError);
-            }
+            Frame::HandShake(_) => Err(Sv2MessageIoError::FrameError),
         }
     }
 

@@ -41,5 +41,5 @@ pub enum RequestToSv2ServerError {
     UnsupportedProtocol { protocol: Protocol },
     FailedToSendRequestToSiblingClientService,
     NoSiblingClientService,
-    Reply(Sv2MessageToClient<'static>),
+    Reply(Box<Sv2MessageToClient<'static>>),
 }

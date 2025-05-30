@@ -74,7 +74,7 @@ pub struct Sv2ClientServiceTemplateDistributionConfig {
     pub server_addr: SocketAddr,
     /// Optional authentication public key for encrypted connections
     pub auth_pk: Option<Secp256k1PublicKey>,
-    /// Coinbase output constraints in the format (max_additional_size, max_additional_sigops	)
+    /// Coinbase output constraints in the format (max_additional_size, max_additional_sigops)
     pub coinbase_output_constraints: (u32, u16),
     /// Flags to be sent in the SetupConnection message
     pub setup_connection_flags: u32,

@@ -85,16 +85,14 @@ async fn main() -> anyhow::Result<()> {
                     .as_ref()
                     .unwrap()
                     .coinbase_output_constraints
-                    .0
-                    .clone(),
+                    .0,
                 config
                     .client_config
                     .template_distribution_config
                     .as_ref()
                     .unwrap()
                     .coinbase_output_constraints
-                    .1
-                    .clone(),
+                    .1,
             ),
         ))
         .await

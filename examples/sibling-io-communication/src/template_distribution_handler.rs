@@ -41,11 +41,11 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
         // `RequestToSv2Client::SendRequestToSiblingServerService` is created and dispatched to the MiningServer.
         // The MiningServer, being a sibling server of the TDC Handler, processes the request accordingly.
 
-        let response = ResponseFromSv2Client::TriggerNewRequest(
+        let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
             RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
                 RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(template)),
             )),
-        );
+        ));
         Ok(response)
     }
 
@@ -56,13 +56,13 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
         info!(prev_hash = ?prev_hash, "MiningServer: Received new previous hash");
 
         // Similar to `handle_new_template`, this forwards the new previous hash to the MiningServer.
-        let response = ResponseFromSv2Client::TriggerNewRequest(
+        let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
             RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
                 RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
                     prev_hash,
                 )),
             )),
-        );
+        ));
         Ok(response)
     }
 

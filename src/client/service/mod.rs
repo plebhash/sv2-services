@@ -151,14 +151,12 @@ where
                     protocol: Protocol::MiningProtocol,
                 });
             }
-        } else {
-            if !is_null_mining_handler {
-                return Err(
-                    Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol {
-                        protocol: Protocol::MiningProtocol,
-                    },
-                );
-            }
+        } else if !is_null_mining_handler {
+            return Err(
+                Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol {
+                    protocol: Protocol::MiningProtocol,
+                },
+            );
         }
 
         // Check if template_distribution_handler is NullSv2TemplateDistributionClientHandler
@@ -172,14 +170,12 @@ where
                     protocol: Protocol::TemplateDistributionProtocol,
                 });
             }
-        } else {
-            if !is_null_template_distribution_handler {
-                return Err(
-                    Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol {
-                        protocol: Protocol::TemplateDistributionProtocol,
-                    },
-                );
-            }
+        } else if !is_null_template_distribution_handler {
+            return Err(
+                Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol {
+                    protocol: Protocol::TemplateDistributionProtocol,
+                },
+            );
         }
         Ok(())
     }
@@ -291,7 +287,7 @@ where
         let tcp_client = match protocol {
             Protocol::MiningProtocol => {
                 if self.mining_tcp_client.read().await.is_none() {
-                    let config = self.config.mining_config.as_ref().ok_or_else(|| {
+                    let config = self.config.mining_config.as_ref().ok_or({
                         RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::MiningProtocol,
                         }
@@ -319,7 +315,7 @@ where
             }
             Protocol::JobDeclarationProtocol => {
                 if self.job_declaration_tcp_client.read().await.is_none() {
-                    let config = self.config.job_declaration_config.as_ref().ok_or_else(|| {
+                    let config = self.config.job_declaration_config.as_ref().ok_or({
                         RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::JobDeclarationProtocol,
                         }
@@ -347,13 +343,11 @@ where
             }
             Protocol::TemplateDistributionProtocol => {
                 if self.template_distribution_tcp_client.read().await.is_none() {
-                    let config = self
-                        .config
-                        .template_distribution_config
-                        .as_ref()
-                        .ok_or_else(|| RequestToSv2ClientError::UnsupportedProtocol {
+                    let config = self.config.template_distribution_config.as_ref().ok_or(
+                        RequestToSv2ClientError::UnsupportedProtocol {
                             protocol: Protocol::TemplateDistributionProtocol,
-                        })?;
+                        },
+                    )?;
                     let tcp_client = Sv2EncryptedTcpClient::new(config.server_addr, config.auth_pk)
                         .await
                         .ok_or_else(|| {
@@ -395,7 +389,7 @@ where
         };
 
         let setup_connection = SetupConnection {
-            protocol: protocol,
+            protocol,
             min_version: self.config.min_supported_version,
             max_version: self.config.max_supported_version,
             flags: supported_flags,
@@ -884,11 +878,11 @@ where
                                             user_identity
                                         ))
                                         })?,
-                                    nominal_hash_rate: nominal_hash_rate.into(),
+                                    nominal_hash_rate,
                                     max_target: max_target.try_into().map_err(|_| {
-                                        RequestToSv2ClientError::U256ConversionError(format!(
-                                            "Failed to convert max_target to fixed-size array"
-                                        ))
+                                        RequestToSv2ClientError::U256ConversionError(
+                                            "Failed to convert max_target to fixed-size array".to_string(),
+                                        )
                                     })?,
                                 }),
                             );
@@ -926,7 +920,7 @@ where
 
                             let open_extended_mining_channel = AnyMessage::Mining(
                                 Mining::OpenExtendedMiningChannel(OpenExtendedMiningChannel {
-                                    request_id: request_id.into(),
+                                    request_id,
                                     user_identity: user_identity
                                         .clone()
                                         .into_bytes()
@@ -937,13 +931,13 @@ where
                                             user_identity,
                                         ))
                                         })?,
-                                    nominal_hash_rate: nominal_hash_rate.into(),
+                                    nominal_hash_rate,
                                     max_target: max_target.try_into().map_err(|_| {
-                                        RequestToSv2ClientError::U256ConversionError(format!(
-                                            "Failed to convert max_target to fixed-size array"
-                                        ))
+                                        RequestToSv2ClientError::U256ConversionError(
+                                            "Failed to convert max_target to fixed-size array".to_string(),
+                                        )
                                     })?,
-                                    min_extranonce_size: min_rollable_extranonce_size.into(),
+                                    min_extranonce_size: min_rollable_extranonce_size,
                                 }),
                             );
 
@@ -1048,13 +1042,11 @@ where
             };
 
             // allows for recursive chaining of requests
-            let response = if let Ok(ResponseFromSv2Client::TriggerNewRequest(request)) = response {
-                this.call(request).await
+            if let Ok(ResponseFromSv2Client::TriggerNewRequest(request)) = response {
+                this.call(*request).await
             } else {
                 response
-            };
-
-            response
+            }
         })
     }
 }
@@ -1288,13 +1280,13 @@ mod tests {
             &self,
             template: NewTemplate<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-            let response = ResponseFromSv2Client::TriggerNewRequest(
+            let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
                     RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(
                         template.into_static(),
                     )),
                 )),
-            );
+            ));
             Ok(response)
         }
 
@@ -1302,13 +1294,13 @@ mod tests {
             &self,
             prev_hash: SetNewPrevHash<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-            let response = ResponseFromSv2Client::TriggerNewRequest(
+            let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
                     RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
                         prev_hash.into_static(),
                     )),
                 )),
-            );
+            ));
             Ok(response)
         }
 
@@ -1819,8 +1811,8 @@ mod tests {
             .clone();
 
         // Initialize the handlers for TemplateDistribution and MiningServer.
-        let tdc_handler = SiblingIoTemplateDistributionClientHandler::default();
-        let mining_server_handler = DummyMiningServerHandler::default();
+        let tdc_handler = SiblingIoTemplateDistributionClientHandler;
+        let mining_server_handler = DummyMiningServerHandler;
 
         // Create the Sv2ServerService and its sibling IO for communication with the client.
         let (
@@ -1846,14 +1838,8 @@ mod tests {
         client_service
             .call(RequestToSv2Client::TemplateDistributionTrigger(
                 RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
-                    template_distribution_config
-                        .coinbase_output_constraints
-                        .0
-                        .clone(),
-                    template_distribution_config
-                        .coinbase_output_constraints
-                        .1
-                        .clone(),
+                    template_distribution_config.coinbase_output_constraints.0,
+                    template_distribution_config.coinbase_output_constraints.1,
                 ),
             ))
             .await
@@ -1986,8 +1972,8 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Initialize the handlers for TemplateDistribution and MiningServer.
-        let tdc_handler = SiblingIoTemplateDistributionClientHandler::default();
-        let mining_handler = DummyMiningServerHandler::default();
+        let tdc_handler = SiblingIoTemplateDistributionClientHandler;
+        let mining_handler = DummyMiningServerHandler;
 
         // Create the Sv2ServerService with a wrong constructor.
         let mut server_service = Sv2ServerService::new(server_config, mining_handler).unwrap();

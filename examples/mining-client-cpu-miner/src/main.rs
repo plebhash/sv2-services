@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod tests {
     use crate::client::MyMiningClient;
     use crate::config::MyMiningClientConfig;

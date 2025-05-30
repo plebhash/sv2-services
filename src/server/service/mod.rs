@@ -113,7 +113,7 @@ where
             config: config.clone(),
             clients: Arc::new(RwLock::new(HashMap::new())),
             client_id_generator: ClientIdGenerator::new(),
-            mining_handler: mining_handler,
+            mining_handler,
             shutdown_tx: broadcast::channel(1).0,
             alive: Arc::new(AtomicBool::new(false)),
             sibling_client_service_io,
@@ -347,14 +347,12 @@ where
                     protocol: Protocol::MiningProtocol,
                 });
             }
-        } else {
-            if !is_null_mining_handler {
-                return Err(
-                    Sv2ServerServiceError::NonNullHandlerForUnsupportedProtocol {
-                        protocol: Protocol::MiningProtocol,
-                    },
-                );
-            }
+        } else if !is_null_mining_handler {
+            return Err(
+                Sv2ServerServiceError::NonNullHandlerForUnsupportedProtocol {
+                    protocol: Protocol::MiningProtocol,
+                },
+            );
         }
 
         // todo: add checks for job_declaration_handler and template_distribution_handler
@@ -416,11 +414,11 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Sv2MessageToClient {
+            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
                 client_id,
                 message: setup_connection_error.into(),
                 message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            });
+            }));
             return Ok(response);
         }
 
@@ -436,11 +434,11 @@ where
                     .try_into()
                     .expect("failed to encode string"),
             };
-            let response = ResponseFromSv2Server::SendReplyToClient(Sv2MessageToClient {
+            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
                 client_id,
                 message: setup_connection_error.into(),
                 message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            });
+            }));
             return Ok(response);
         }
 
@@ -482,11 +480,11 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Sv2MessageToClient {
+            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
                 client_id,
                 message: setup_connection_error.into(),
                 message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            });
+            }));
 
             return Ok(response);
         }
@@ -534,11 +532,11 @@ where
             flags: setup_connection_success_flags,
         };
 
-        let response = ResponseFromSv2Server::SendReplyToClient(Sv2MessageToClient {
+        let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
             client_id,
             message: setup_connection_success.into(),
             message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-        });
+        }));
 
         Ok(response)
     }
@@ -866,13 +864,11 @@ where
             }
 
             // allow for recursive chaining of requests
-            let response = if let Ok(ResponseFromSv2Server::TriggerNewRequest(req)) = response {
-                this.call(req).await
+            if let Ok(ResponseFromSv2Server::TriggerNewRequest(req)) = response {
+                this.call(*req).await
             } else {
                 response
-            };
-
-            response
+            }
         })
     }
 }

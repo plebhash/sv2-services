@@ -129,7 +129,7 @@ mod tests {
         // Create server
         super::start_encrypted_tcp_server(
             server_addr,
-            pub_key.clone(),
+            pub_key,
             priv_key,
             10000,
             new_client_tx,
