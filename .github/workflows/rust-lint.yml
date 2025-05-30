@@ -1,20 +1,17 @@
-name: Rust CI
+name: Rust Lint
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  test:
+  lint:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,28 +29,26 @@ jobs:
         with:
           rust-version: stable
 
-      - name: Run tests on the root project
-        run: cargo test --workspace
+      - name: Check formatting (workspace)
+        run: cargo fmt --all -- --check
 
-      - name: Run tests on example crates
+      - name: Check formatting (examples)
         run: |
           for example in examples/*/; do
             if [ -f "$example/Cargo.toml" ]; then
-              echo "Running tests for $example"
-              (cd $example && cargo test)
+              echo "Checking formatting for $example"
+              (cd $example && cargo fmt --all -- --check)
             fi
           done
 
-      - name: Install cargo-tarpaulin for coverage
-        run: cargo install cargo-tarpaulin
+      - name: Run clippy (workspace)
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run coverage with cargo-tarpaulin
-        run: cargo tarpaulin --out Xml
-        if: success()
-
-      - name: Upload coverage results to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          file: ./target/debug/deps/coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
-        if: success()
+      - name: Run clippy (examples)
+        run: |
+          for example in examples/*/; do
+            if [ -f "$example/Cargo.toml" ]; then
+              echo "Running clippy for $example"
+              (cd $example && cargo clippy --all-targets --all-features -- -D warnings)
+            fi
+          done
