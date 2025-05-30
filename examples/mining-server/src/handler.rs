@@ -82,7 +82,7 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         // todo: update some actual state on the server representing this new standard mining channel
 
         let message = Sv2MessageToClient {
-            client_id: client_id,
+            client_id,
             message: AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(
                 OpenStandardMiningChannelSuccess {
                     request_id,
@@ -98,7 +98,7 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
             "sending OpenStandardMiningChannelSuccess to client with id: {}",
             client_id
         );
-        Ok(ResponseFromSv2Server::SendReplyToClient(message))
+        Ok(ResponseFromSv2Server::SendReplyToClient(Box::new(message)))
     }
 
     async fn handle_open_extended_mining_channel(

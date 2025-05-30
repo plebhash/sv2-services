@@ -13,7 +13,7 @@ pub struct Sv2MessageToClient<'a> {
 #[derive(Debug, Clone)]
 pub enum ResponseFromSv2Server<'a> {
     // triggers the service to send a reply to the client
-    SendReplyToClient(Sv2MessageToClient<'a>),
-    TriggerNewRequest(RequestToSv2Server<'a>),
+    SendReplyToClient(Box<Sv2MessageToClient<'a>>),
+    TriggerNewRequest(Box<RequestToSv2Server<'a>>),
     Ok,
 }

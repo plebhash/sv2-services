@@ -51,7 +51,7 @@ pub trait Sv2TemplateDistributionClientHandler {
             TemplateDistribution::RequestTransactionData(RequestTransactionData { template_id }),
         );
 
-        async move { Ok(ResponseFromSv2Client::SendToServer(message)) }
+        async move { Ok(ResponseFromSv2Client::SendToServer(Box::new(message))) }
     }
 
     fn set_coinbase_output_constraints(
@@ -68,7 +68,7 @@ pub trait Sv2TemplateDistributionClientHandler {
             }),
         );
 
-        async move { Ok(ResponseFromSv2Client::SendToServer(message)) }
+        async move { Ok(ResponseFromSv2Client::SendToServer(Box::new(message))) }
     }
 }
 

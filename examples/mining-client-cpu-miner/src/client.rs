@@ -32,7 +32,7 @@ impl MyMiningClient {
                 server_addr: config.server_addr,
                 auth_pk: config.auth_pk,
                 // REQUIRES_VERSION_ROLLING, !REQUIRES_WORK_SELECTION, REQUIRES_STANDARD_JOBS
-                setup_connection_flags: 0b001 as u32,
+                setup_connection_flags: 0b001_u32,
             }),
             job_declaration_config: None,
             template_distribution_config: None,
@@ -76,8 +76,8 @@ impl MyMiningClient {
                         RequestToSv2MiningClientService::OpenStandardMiningChannel(
                             0, // todo
                             self.user_identity.clone(),
-                            10.0,                                  // todo
-                            vec![0xFF_u8; 32].try_into().unwrap(), // todo
+                            10.0,              // todo
+                            vec![0xFF_u8; 32], // todo
                         ),
                     ))
                     .await
@@ -99,8 +99,8 @@ impl MyMiningClient {
                         RequestToSv2MiningClientService::OpenExtendedMiningChannel(
                             0, // todo
                             self.user_identity.clone(),
-                            10.0,                                  // todo
-                            vec![0xFF_u8; 32].try_into().unwrap(), // todo
+                            10.0,              // todo
+                            vec![0xFF_u8; 32], // todo
                             1,
                         ),
                     ))
