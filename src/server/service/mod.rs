@@ -5,7 +5,7 @@ use crate::server::service::connection::Sv2ConnectionClient;
 use crate::server::service::error::Sv2ServerServiceError;
 use crate::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
 use crate::server::service::response::ResponseFromSv2Server;
-use crate::server::service::response::Sv2MessageToClient;
+use crate::server::service::response::Sv2MessagesToClient;
 use crate::server::service::sibling::Sv2SiblingClientServiceIo;
 use crate::server::service::subprotocols::mining::handler::NullSv2MiningServerHandler;
 use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
@@ -414,12 +414,14 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type:
-                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+            let response =
+                ResponseFromSv2Server::SendMessagesToClients(Box::new(vec![Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![(
+                        setup_connection_error.into(),
+                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
+                    )],
+                }]));
             return Ok(response);
         }
 
@@ -435,12 +437,14 @@ where
                     .try_into()
                     .expect("failed to encode string"),
             };
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type:
-                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+            let response =
+                ResponseFromSv2Server::SendMessagesToClients(Box::new(vec![Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![(
+                        setup_connection_error.into(),
+                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
+                    )],
+                }]));
             return Ok(response);
         }
 
@@ -482,12 +486,14 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type:
-                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+            let response =
+                ResponseFromSv2Server::SendMessagesToClients(Box::new(vec![Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![(
+                        setup_connection_error.into(),
+                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
+                    )],
+                }]));
 
             if !Self::has_null_handler(Protocol::MiningProtocol) {
                 self.mining_handler.add_client(client_id, req.flags).await;
@@ -539,12 +545,14 @@ where
             flags: setup_connection_success_flags,
         };
 
-        let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-            client_id,
-            message: setup_connection_success.into(),
-            message_type:
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-        }));
+        let response =
+            ResponseFromSv2Server::SendMessagesToClients(Box::new(vec![Sv2MessagesToClient {
+                client_id,
+                messages: vec![(
+                    setup_connection_success.into(),
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
+                )],
+            }]));
 
         Ok(response)
     }
@@ -840,34 +848,37 @@ where
                 }
             };
 
-            if let Ok(ResponseFromSv2Server::SendReplyToClient(sv2_message_to_client)) =
+            if let Ok(ResponseFromSv2Server::SendMessagesToClients(sv2_messages_to_clients)) =
                 response.clone()
             {
-                let client_id = sv2_message_to_client.client_id;
+                for sv2_messages_to_client in sv2_messages_to_clients.as_ref() {
+                    let client_id = sv2_messages_to_client.client_id;
 
-                // Get the client's IO from the map
-                let io = {
-                    let clients = this.clients.read().await;
-                    if let Some(client) = clients.get(&client_id) {
-                        let client = client.read().await;
-                        client.io.clone()
-                    } else {
-                        tracing::error!(
-                            "client {} not found when trying to send response",
-                            client_id
-                        );
-                        return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
+                    // Get the client's IO from the map
+                    let io = {
+                        let clients = this.clients.read().await;
+                        if let Some(client) = clients.get(&client_id) {
+                            let client = client.read().await;
+                            client.io.clone()
+                        } else {
+                            tracing::error!(
+                                "client {} not found when trying to send response",
+                                client_id
+                            );
+                            return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
+                        }
+                    };
+
+                    for (message, message_type) in sv2_messages_to_client.messages.clone() {
+                        match io.send_message(message, message_type).await {
+                            Ok(_) => {
+                                return Ok(ResponseFromSv2Server::Ok);
+                            }
+                            Err(_) => {
+                                return Err(RequestToSv2ServerError::FailedToSendResponseToClient)
+                            }
+                        }
                     }
-                };
-
-                let message = sv2_message_to_client.message.clone();
-                let message_type = sv2_message_to_client.message_type;
-
-                match io.send_message(message, message_type).await {
-                    Ok(_) => {
-                        return Ok(ResponseFromSv2Server::Ok);
-                    }
-                    Err(_) => return Err(RequestToSv2ServerError::FailedToSendResponseToClient),
                 }
             }
 

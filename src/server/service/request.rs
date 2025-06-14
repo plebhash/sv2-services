@@ -2,7 +2,7 @@ use roles_logic_sv2::common_messages_sv2::Protocol;
 use roles_logic_sv2::parsers::AnyMessage;
 
 use crate::client::service::request::RequestToSv2Client;
-use crate::server::service::response::Sv2MessageToClient;
+use crate::server::service::response::Sv2MessagesToClient;
 use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
 
 /// The request type for the [`crate::server::service::Sv2ServerService`] service.
@@ -41,5 +41,5 @@ pub enum RequestToSv2ServerError {
     UnsupportedProtocol { protocol: Protocol },
     FailedToSendRequestToSiblingClientService,
     NoSiblingClientService,
-    Reply(Box<Sv2MessageToClient<'static>>),
+    FailedToSendMessagesToClient(Box<Sv2MessagesToClient<'static>>),
 }

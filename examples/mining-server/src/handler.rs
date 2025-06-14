@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_stratum::server::service::request::RequestToSv2ServerError;
 use tower_stratum::server::service::response::ResponseFromSv2Server;
-use tower_stratum::server::service::response::Sv2MessageToClient;
+use tower_stratum::server::service::response::Sv2MessagesToClient;
 use tower_stratum::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
 
 use crate::client::MyMiningServerClient;
@@ -81,24 +81,28 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
 
         // todo: update some actual state on the server representing this new standard mining channel
 
-        let message = Sv2MessageToClient {
+        let message = Sv2MessagesToClient {
             client_id,
-            message: AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(
-                OpenStandardMiningChannelSuccess {
-                    request_id,
-                    channel_id: 0,
-                    target,
-                    extranonce_prefix,
-                    group_channel_id: 0,
-                },
-            )),
-            message_type: MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS,
+            messages: vec![(
+                AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(
+                    OpenStandardMiningChannelSuccess {
+                        request_id,
+                        channel_id: 0,
+                        target,
+                        extranonce_prefix,
+                        group_channel_id: 0,
+                    },
+                )),
+                MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS,
+            )],
         };
         info!(
             "sending OpenStandardMiningChannelSuccess to client with id: {}",
             client_id
         );
-        Ok(ResponseFromSv2Server::SendReplyToClient(Box::new(message)))
+        Ok(ResponseFromSv2Server::SendMessagesToClients(Box::new(
+            vec![message],
+        )))
     }
 
     async fn handle_open_extended_mining_channel(
