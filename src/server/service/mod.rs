@@ -848,45 +848,70 @@ where
                 }
             };
 
-            if let Ok(ResponseFromSv2Server::SendMessagesToClients(sv2_messages_to_clients)) =
-                response.clone()
-            {
-                for sv2_messages_to_client in sv2_messages_to_clients.as_ref() {
-                    let client_id = sv2_messages_to_client.client_id;
+            match response.clone() {
+                // recursive chaining of requests
+                Ok(ResponseFromSv2Server::TriggerNewRequest(req)) => {
+                    debug!(
+                        "Sv2ServerService::call generated a TriggerNewRequest response: {:?}",
+                        req
+                    );
+                    let new_response = this.call(*req).await;
+                    return new_response;
+                }
+                // send messages to clients
+                Ok(ResponseFromSv2Server::SendMessagesToClients(sv2_messages_to_client)) => {
+                    debug!(
+                        "Sv2ServerService::call generated a SendMessagesToClient response: {:?}",
+                        sv2_messages_to_client
+                    );
 
-                    // Get the client's IO from the map
-                    let io = {
-                        let clients = this.clients.read().await;
-                        if let Some(client) = clients.get(&client_id) {
-                            let client = client.read().await;
-                            client.io.clone()
-                        } else {
-                            tracing::error!(
-                                "client {} not found when trying to send response",
-                                client_id
-                            );
-                            return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
-                        }
-                    };
+                    for sv2_messages_to_client in sv2_messages_to_client.as_ref() {
+                        let client_id = sv2_messages_to_client.client_id;
 
-                    for (message, message_type) in sv2_messages_to_client.messages.clone() {
-                        match io.send_message(message, message_type).await {
-                            Ok(_) => {
-                                return Ok(ResponseFromSv2Server::Ok);
+                        // Get the client's IO from the map
+                        let io = {
+                            let clients = this.clients.read().await;
+                            if let Some(client) = clients.get(&client_id) {
+                                let client = client.read().await;
+                                client.io.clone()
+                            } else {
+                                tracing::error!(
+                                    "client {} not found when trying to send response",
+                                    client_id
+                                );
+                                return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
                             }
-                            Err(_) => {
-                                return Err(RequestToSv2ServerError::FailedToSendResponseToClient)
+                        };
+
+                        for (message, message_type) in sv2_messages_to_client.messages.clone() {
+                            match io.send_message(message, message_type).await {
+                                Ok(_) => {
+                                    continue;
+                                }
+                                Err(_) => {
+                                    return Err(
+                                        RequestToSv2ServerError::FailedToSendResponseToClient,
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            }
 
-            // allow for recursive chaining of requests
-            if let Ok(ResponseFromSv2Server::TriggerNewRequest(req)) = response {
-                this.call(*req).await
-            } else {
-                response
+                    return Ok(ResponseFromSv2Server::Ok);
+                }
+                // no-op Ok
+                Ok(ResponseFromSv2Server::Ok) => {
+                    debug!("Sv2ServerService::call generated a Ok response");
+                    return Ok(ResponseFromSv2Server::Ok);
+                }
+                // error
+                Err(e) => {
+                    debug!(
+                        "Sv2ServerService::call generated an error response: {:?}",
+                        e
+                    );
+                    return Err(e);
+                }
             }
         })
     }
