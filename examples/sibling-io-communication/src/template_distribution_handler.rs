@@ -9,7 +9,7 @@ use tower_stratum::client::service::request::{RequestToSv2Client, RequestToSv2Cl
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use tower_stratum::server::service::request::RequestToSv2Server;
-use tower_stratum::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+use tower_stratum::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use tracing::info;
 #[derive(Debug, Clone, Default)]
 pub struct MyTemplateDistributionHandler {
@@ -43,7 +43,7 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
 
         let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
             RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(template)),
+                RequestToSv2Server::MiningTrigger(MiningServerTrigger::NewTemplate(template)),
             )),
         ));
         Ok(response)
@@ -58,7 +58,7 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
         // Similar to `handle_new_template`, this forwards the new previous hash to the MiningServer.
         let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
             RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
+                RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(
                     prev_hash,
                 )),
             )),

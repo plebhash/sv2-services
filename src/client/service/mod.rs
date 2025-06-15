@@ -1130,7 +1130,7 @@ mod tests {
     use crate::server::service::request::RequestToSv2ServerError;
     use crate::server::service::response::ResponseFromSv2Server;
     use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
-    use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+    use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
     use crate::server::service::Sv2ServerService;
     use integration_tests_sv2::interceptor::MessageDirection;
     use integration_tests_sv2::start_sniffer;
@@ -1340,7 +1340,7 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::NewTemplate(
                         template.into_static(),
                     )),
                 )),
@@ -1354,7 +1354,7 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(
                         prev_hash.into_static(),
                     )),
                 )),
@@ -1931,7 +1931,7 @@ mod tests {
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;
@@ -1955,7 +1955,7 @@ mod tests {
         let new_prev_hash_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::SetNewPrevHash(new_prev_hash),
+                    MiningServerTrigger::SetNewPrevHash(new_prev_hash),
                 )),
             ))
             .await
@@ -2063,7 +2063,7 @@ mod tests {
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;

@@ -10,7 +10,7 @@ use crate::server::service::response::ResponseFromSv2Server;
 use crate::server::service::sibling::Sv2SiblingClientServiceIo;
 use crate::server::service::subprotocols::mining::handler::NullSv2MiningServerHandler;
 use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
-use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use crate::server::tcp::encrypted::start_encrypted_tcp_server;
 use crate::server::ClientIdGenerator;
 use roles_logic_sv2::common_messages_sv2::{
@@ -824,11 +824,11 @@ where
                     }
                 }
                 RequestToSv2Server::MiningTrigger(req) => match req {
-                    RequestToSv2MiningServer::NewTemplate(new_template) => {
+                    MiningServerTrigger::NewTemplate(new_template) => {
                         debug!("Sv2ServerService received a NewTemplate message via external mining trigger");
                         this.mining_handler.on_new_template(new_template).await
                     }
-                    RequestToSv2MiningServer::SetNewPrevHash(set_new_prev_hash) => {
+                    MiningServerTrigger::SetNewPrevHash(set_new_prev_hash) => {
                         debug!("Sv2ServerService received a SetNewPrevHash message via external mining trigger");
                         this.mining_handler
                             .on_set_new_prev_hash(set_new_prev_hash)

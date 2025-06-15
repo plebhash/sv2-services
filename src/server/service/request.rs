@@ -3,7 +3,7 @@ use roles_logic_sv2::parsers::AnyMessage;
 
 use crate::client::service::request::RequestToSv2Client;
 use crate::server::service::client::Sv2MessagesToClient;
-use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 
 /// The request type for the [`crate::server::service::Sv2ServerService`] service.
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub enum RequestToSv2Server<'a> {
     /// Could belong to any subprotocol.
     IncomingMessage(Sv2MessageToServer<'a>),
     /// Some trigger for the mining subprotocol service
-    MiningTrigger(RequestToSv2MiningServer<'a>),
+    MiningTrigger(MiningServerTrigger<'a>),
     // todo:
     // JobDeclarationTrigger(RequestToSv2JobDeclarationServer<'a>),
     // TemplateDistributionTrigger(RequestToSv2TemplateDistributionServer<'a>),
