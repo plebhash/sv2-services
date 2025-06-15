@@ -3,7 +3,7 @@ use crate::client::service::subprotocols::template_distribution::request::Reques
 use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
 use roles_logic_sv2::common_messages_sv2::Protocol;
-use roles_logic_sv2::parsers::AnyMessage;
+use roles_logic_sv2::parsers::{AnyMessage, Mining, TemplateDistribution};
 
 /// The request type for the [`crate::client::service::Sv2ClientService`] service.
 #[derive(Debug, Clone)]
@@ -15,8 +15,10 @@ pub enum RequestToSv2Client<'a> {
     IncomingMessage(AnyMessage<'a>),
     MiningTrigger(RequestToSv2MiningClientService),
     TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService<'a>),
-    /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
+    SendMessageToMiningServer(Box<(Mining<'a>, u8)>), // message, message_type
+    SendMessageToTemplateDistributionServer(Box<(TemplateDistribution<'a>, u8)>),
+    // SendMessageToJobDeclarationServer(Box<(JobDeclaration<'a>, u8)>),
 }
 
 /// The error type for the [`crate::client::service::Sv2ClientService`] service.
