@@ -242,6 +242,7 @@ where
                                 }
                             }
                             debug!("Client {} message handler task ended", client_id);
+                            service.remove_client(client_id).await;
                         });
                     }
                 }
