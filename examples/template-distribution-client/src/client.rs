@@ -8,7 +8,7 @@ use tower_stratum::client::service::config::Sv2ClientServiceTemplateDistribution
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
-use tower_stratum::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use tower_stratum::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use tracing::info;
 
 pub struct MyTemplateDistributionClient {
@@ -73,7 +73,7 @@ impl MyTemplateDistributionClient {
         let set_coinbase_output_constraints_response = self
             .sv2_client_service
             .call(RequestToSv2Client::TemplateDistributionTrigger(
-                RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                     self.coinbase_output_max_additional_size,
                     self.coinbase_output_max_additional_sigops,
                 ),

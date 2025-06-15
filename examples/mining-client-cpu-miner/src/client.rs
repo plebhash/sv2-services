@@ -6,7 +6,7 @@ use tower_stratum::client::service::config::Sv2ClientServiceConfig;
 use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
-use tower_stratum::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
+use tower_stratum::client::service::subprotocols::mining::trigger::MiningClientTrigger;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use tower_stratum::tower::{Service, ServiceExt};
 use tracing::info;
@@ -73,7 +73,7 @@ impl MyMiningClient {
                 let open_standard_mining_channel_response = self
                     .sv2_client_service
                     .call(RequestToSv2Client::MiningTrigger(
-                        RequestToSv2MiningClientService::OpenStandardMiningChannel(
+                        MiningClientTrigger::OpenStandardMiningChannel(
                             0, // todo
                             self.user_identity.clone(),
                             10.0,              // todo
@@ -96,7 +96,7 @@ impl MyMiningClient {
                 let open_extended_mining_channel_response = self
                     .sv2_client_service
                     .call(RequestToSv2Client::MiningTrigger(
-                        RequestToSv2MiningClientService::OpenExtendedMiningChannel(
+                        MiningClientTrigger::OpenExtendedMiningChannel(
                             0, // todo
                             self.user_identity.clone(),
                             10.0,              // todo

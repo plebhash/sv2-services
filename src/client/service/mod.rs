@@ -5,10 +5,10 @@ use crate::client::service::response::ResponseFromSv2Client;
 use crate::client::service::sibling::Sv2SiblingServerServiceIo;
 use crate::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use crate::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
-use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
+use crate::client::service::subprotocols::mining::trigger::MiningClientTrigger;
 use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
-use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
 use roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION;
 use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
@@ -849,7 +849,7 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
-                        RequestToSv2MiningClientService::OpenStandardMiningChannel(
+                        MiningClientTrigger::OpenStandardMiningChannel(
                             request_id,
                             user_identity,
                             nominal_hash_rate,
@@ -900,7 +900,7 @@ where
                                 Err(e) => Err(e.into()),
                             }
                         }
-                        RequestToSv2MiningClientService::OpenExtendedMiningChannel(
+                        MiningClientTrigger::OpenExtendedMiningChannel(
                             request_id,
                             user_identity,
                             nominal_hash_rate,
@@ -973,20 +973,20 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
-                        RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                        TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                             max_additional_size,
                             max_additional_sigops,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
                             this.template_distribution_handler.set_coinbase_output_constraints(max_additional_size, max_additional_sigops).await
                         }
-                        RequestToSv2TemplateDistributionClientService::TransactionDataNeeded(
+                        TemplateDistributionClientTrigger::TransactionDataNeeded(
                             _template_id,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
                             this.template_distribution_handler.transaction_data_needed(_template_id).await
                         }
-                        RequestToSv2TemplateDistributionClientService::SubmitSolution(
+                        TemplateDistributionClientTrigger::SubmitSolution(
                             submit_solution,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending SubmitSolution");
@@ -1120,7 +1120,7 @@ mod tests {
     use crate::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
     use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
     use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
-    use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+    use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
     use crate::client::service::RequestToSv2ClientError;
     use crate::client::service::Sv2ClientService;
     use crate::server::service::config::Sv2ServerServiceConfig;
@@ -1130,7 +1130,7 @@ mod tests {
     use crate::server::service::request::RequestToSv2ServerError;
     use crate::server::service::response::ResponseFromSv2Server;
     use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
-    use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+    use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
     use crate::server::service::Sv2ServerService;
     use integration_tests_sv2::interceptor::MessageDirection;
     use integration_tests_sv2::start_sniffer;
@@ -1340,7 +1340,7 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::NewTemplate(
                         template.into_static(),
                     )),
                 )),
@@ -1354,7 +1354,7 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(
                         prev_hash.into_static(),
                     )),
                 )),
@@ -1894,7 +1894,7 @@ mod tests {
         // Trigger the Template Provider to set coinbase output constraints.
         client_service
             .call(RequestToSv2Client::TemplateDistributionTrigger(
-                RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                     template_distribution_config.coinbase_output_constraints.0,
                     template_distribution_config.coinbase_output_constraints.1,
                 ),
@@ -1931,7 +1931,7 @@ mod tests {
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;
@@ -1955,7 +1955,7 @@ mod tests {
         let new_prev_hash_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::SetNewPrevHash(new_prev_hash),
+                    MiningServerTrigger::SetNewPrevHash(new_prev_hash),
                 )),
             ))
             .await
@@ -2063,7 +2063,7 @@ mod tests {
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;
@@ -2083,7 +2083,7 @@ mod tests {
     async fn sv2_client_service_submit_solution() {
         use crate::client::service::request::RequestToSv2Client;
         use crate::client::service::response::ResponseFromSv2Client;
-        use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+        use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
         use roles_logic_sv2::common_messages_sv2::Protocol;
         use roles_logic_sv2::template_distribution_sv2::SubmitSolution;
 
@@ -2142,7 +2142,7 @@ mod tests {
         };
 
         let submit_solution_request = RequestToSv2Client::TemplateDistributionTrigger(
-            RequestToSv2TemplateDistributionClientService::SubmitSolution(submit_solution),
+            TemplateDistributionClientTrigger::SubmitSolution(submit_solution),
         );
 
         let response = sv2_client_service.call(submit_solution_request).await;
