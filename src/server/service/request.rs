@@ -2,7 +2,7 @@ use roles_logic_sv2::common_messages_sv2::Protocol;
 use roles_logic_sv2::parsers::AnyMessage;
 
 use crate::client::service::request::RequestToSv2Client;
-use crate::server::service::response::Sv2MessageToClient;
+use crate::server::service::client::Sv2MessagesToClient;
 use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
 
 /// The request type for the [`crate::server::service::Sv2ServerService`] service.
@@ -18,6 +18,10 @@ pub enum RequestToSv2Server<'a> {
     // TemplateDistributionTrigger(RequestToSv2TemplateDistributionServer<'a>),
     /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
     SendRequestToSiblingClientService(Box<RequestToSv2Client<'a>>),
+    /// Send ordered sequence of Sv2 messages to a specific client.
+    SendMessagesToClient(Box<Sv2MessagesToClient<'a>>),
+    /// Send ordered sequences of Sv2 messages to different clients.
+    SendMessagesToClients(Box<Vec<Sv2MessagesToClient<'a>>>),
 }
 
 /// A Sv2 message addressed to the server, to be used as the request type of [`crate::server::service::Sv2ServerService`].
@@ -41,7 +45,6 @@ pub enum RequestToSv2ServerError {
     UnsupportedProtocol { protocol: Protocol },
     FailedToSendRequestToSiblingClientService,
     NoSiblingClientService,
-    Reply(Box<Sv2MessageToClient<'static>>),
     MiningHandlerError(String),
     TemplateDistributionHandlerError(String),
     JobDeclarationHandlerError(String),
