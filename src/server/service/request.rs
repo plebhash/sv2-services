@@ -10,7 +10,7 @@ use crate::server::service::subprotocols::mining::request::RequestToSv2MiningSer
 pub enum RequestToSv2Server<'a> {
     /// Some Sv2 message addressed to the server.
     /// Could belong to any subprotocol.
-    Message(Sv2MessageToServer<'a>),
+    IncomingMessage(Sv2MessageToServer<'a>),
     /// Some trigger for the mining subprotocol service
     MiningTrigger(RequestToSv2MiningServer<'a>),
     // todo:

@@ -3,7 +3,9 @@ use crate::server::service::client::{Sv2MessagesToClient, Sv2ServerServiceClient
 use crate::server::service::config::Sv2ServerServiceConfig;
 use crate::server::service::connection::Sv2ConnectionClient;
 use crate::server::service::error::Sv2ServerServiceError;
-use crate::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
+use crate::server::service::request::{
+    RequestToSv2Server, RequestToSv2ServerError, Sv2MessageToServer,
+};
 use crate::server::service::response::ResponseFromSv2Server;
 use crate::server::service::sibling::Sv2SiblingClientServiceIo;
 use crate::server::service::subprotocols::mining::handler::NullSv2MiningServerHandler;
@@ -216,7 +218,7 @@ where
                                     message_result = io.recv_message() => {
                                         match message_result {
                                             Ok((message, _message_type)) => {
-                                                let request = RequestToSv2Server::Message(request::Sv2MessageToServer {
+                                                let request = RequestToSv2Server::IncomingMessage(Sv2MessageToServer {
                                                     message,
                                                     client_id: Some(client_id),
                                                 });
@@ -643,7 +645,7 @@ where
 
         Box::pin(async move {
             // Extract client_id if available and update message time
-            if let RequestToSv2Server::Message(sv2_message) = &req {
+            if let RequestToSv2Server::IncomingMessage(sv2_message) = &req {
                 if let Some(client_id) = sv2_message.client_id {
                     this.update_client_message_time(client_id).await;
                 }
@@ -651,7 +653,7 @@ where
 
             let req_clone = req.clone();
             let response = match req_clone {
-                RequestToSv2Server::Message(sv2_message) => {
+                RequestToSv2Server::IncomingMessage(sv2_message) => {
                     match sv2_message.message {
                         AnyMessage::Common(common) => {
                             match common {
