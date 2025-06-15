@@ -1,5 +1,6 @@
 use crate::server::service::connection::Sv2ConnectionClient;
 use crate::Sv2MessageIo;
+use roles_logic_sv2::parsers::AnyMessage;
 use std::time::Instant;
 
 /// Representation of a Client of a Sv2 Server, to be:
@@ -37,4 +38,11 @@ impl Sv2ServerServiceClient {
             .as_secs()
             > inactivity_limit_secs
     }
+}
+
+/// An ordered sequence of Sv2 messages, to be delivered to a specific client.
+#[derive(Debug, Clone)]
+pub struct Sv2MessagesToClient<'a> {
+    pub client_id: u32,
+    pub messages: Vec<(AnyMessage<'a>, u8)>,
 }

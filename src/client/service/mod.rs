@@ -16,9 +16,6 @@ use roles_logic_sv2::mining_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
 use roles_logic_sv2::mining_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL;
 use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
 use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
-use roles_logic_sv2::template_distribution_sv2::CoinbaseOutputConstraints;
-use roles_logic_sv2::template_distribution_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
-use roles_logic_sv2::template_distribution_sv2::MESSAGE_TYPE_SUBMIT_SOLUTION;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -475,7 +472,7 @@ where
                 message_result = tcp_client.io.recv_message() => {
                     match message_result {
                         Ok((message, _)) => {
-                            if let Err(e) = self.call(RequestToSv2Client::Message(message)).await {
+                            if let Err(e) = self.call(RequestToSv2Client::IncomingMessage(message)).await {
                                 // this is a protection from attacks where a server sends a message that it knows the client cannot handle
                                 // we simply log the error and ignore the message, without shutting down the client
                                 error!("Error handling message: {:?}, message will be ignored", e);
@@ -631,7 +628,7 @@ where
                         this.initiate_connection(protocol, 0).await
                     }
                 },
-                RequestToSv2Client::Message(sv2_message) => {
+                RequestToSv2Client::IncomingMessage(sv2_message) => {
                     match sv2_message {
                         AnyMessage::Common(common) => match common {
                             CommonMessages::SetupConnection(_) => {
@@ -981,80 +978,19 @@ where
                             max_additional_sigops,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
-                            let tcp_client = this
-                                .template_distribution_tcp_client
-                                .read()
-                                .await
-                                .as_ref()
-                                .expect("template_distribution_tcp_client should be Some")
-                                .clone();
-                            let coinbase_output_constraints = AnyMessage::TemplateDistribution(
-                                TemplateDistribution::CoinbaseOutputConstraints(
-                                    CoinbaseOutputConstraints {
-                                        coinbase_output_max_additional_size: max_additional_size,
-                                        coinbase_output_max_additional_sigops: max_additional_sigops,
-                                    },
-                                ),
-                            );
-                            let result = tcp_client
-                                .io
-                                .send_message(
-                                    coinbase_output_constraints,
-                                    MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
-                                )
-                                .await;
-                            match result {
-                                Ok(_) => {
-                                    debug!("Successfully set CoinbaseOutputConstraints");
-                                    this.config
-                                        .template_distribution_config
-                                        .as_mut()
-                                        .expect("template_distribution_config should be Some")
-                                        .coinbase_output_constraints =
-                                        (max_additional_size, max_additional_sigops);
-                                    Ok(ResponseFromSv2Client::Ok)
-                                }
-                                Err(e) => Err(e.into()),
-                            }
+                            this.template_distribution_handler.set_coinbase_output_constraints(max_additional_size, max_additional_sigops).await
                         }
                         RequestToSv2TemplateDistributionClientService::TransactionDataNeeded(
                             _template_id,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
-                            todo!()
+                            this.template_distribution_handler.transaction_data_needed(_template_id).await
                         }
                         RequestToSv2TemplateDistributionClientService::SubmitSolution(
                             submit_solution,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending SubmitSolution");
-                            if !this
-                                .is_connected(Protocol::TemplateDistributionProtocol)
-                                .await
-                            {
-                                return Err(RequestToSv2ClientError::IsNotConnected);
-                            }
-
-                            let tcp_client = this
-                                .template_distribution_tcp_client
-                                .read()
-                                .await
-                                .as_ref()
-                                .expect("template_distribution_tcp_client should be Some")
-                                .clone();
-                            let submit_solution = AnyMessage::TemplateDistribution(
-                                TemplateDistribution::SubmitSolution(submit_solution),
-                            );
-                            let result = tcp_client
-                                .io
-                                .send_message(submit_solution, MESSAGE_TYPE_SUBMIT_SOLUTION)
-                                .await;
-                            match result {
-                                Ok(_) => {
-                                    debug!("Successfully sent SubmitSolution");
-                                    Ok(ResponseFromSv2Client::Ok)
-                                }
-                                Err(e) => Err(e.into()),
-                            }
+                            this.template_distribution_handler.submit_solution(submit_solution).await
                         }
                     }
                 }
@@ -1073,6 +1009,94 @@ where
                         }
                     }
                 }
+                RequestToSv2Client::SendMessageToMiningServer(message) => {
+                    if this.config.mining_config.is_none()
+                        || std::any::TypeId::of::<M>()
+                            == std::any::TypeId::of::<NullSv2MiningClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::MiningProtocol,
+                        });
+                    }
+
+                    if this.mining_tcp_client.read().await.is_none() {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
+                    }
+
+                    let tcp_client = this
+                        .mining_tcp_client
+                        .read()
+                        .await
+                        .as_ref()
+                        .expect("mining_tcp_client should be Some")
+                        .clone();
+
+                    match tcp_client
+                        .io
+                        .send_message(AnyMessage::Mining(message.0), message.1)
+                        .await
+                    {
+                        Ok(_) => {
+                            debug!("Successfully sent message to mining server");
+                            return Ok(ResponseFromSv2Client::Ok);
+                        }
+                        Err(e) => Err(e.into()),
+                    }
+                }
+                RequestToSv2Client::SendMessageToTemplateDistributionServer(message) => {
+                    if this.config.template_distribution_config.is_none()
+                        || std::any::TypeId::of::<T>()
+                            == std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::TemplateDistributionProtocol,
+                        });
+                    }
+
+                    if this.template_distribution_tcp_client.read().await.is_none() {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
+                    }
+
+                    let tcp_client = this
+                        .template_distribution_tcp_client
+                        .read()
+                        .await
+                        .as_ref()
+                        .expect("template_distribution_tcp_client should be Some")
+                        .clone();
+
+                    match tcp_client
+                        .io
+                        .send_message(AnyMessage::TemplateDistribution(message.0), message.1)
+                        .await
+                    {
+                        Ok(_) => {
+                            debug!("Successfully sent message to template distribution server");
+                            return Ok(ResponseFromSv2Client::Ok);
+                        }
+                        Err(e) => Err(e.into()),
+                    }
+                } // RequestToSv2Client::SendMessageToJobDeclarationServer(message) => {
+                  //     if this.config.job_declaration_config.is_none() || std::any::TypeId::of::<J>() == std::any::TypeId::of::<NullSv2JobDeclarationClientHandler>() {
+                  //         return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                  //             protocol: Protocol::JobDeclarationProtocol,
+                  //         });
+                  //     }
+
+                  //     if this.job_declaration_tcp_client.read().await.is_none() {
+                  //         return Err(RequestToSv2ClientError::IsNotConnected);
+                  //     }
+
+                  //     let tcp_client = this.job_declaration_tcp_client.read().await.as_ref().expect("job_declaration_tcp_client should be Some").clone();
+
+                  //     match tcp_client.io.send_message(AnyMessage::JobDeclaration(message.0), message.1).await {
+                  //         Ok(_) => {
+                  //             debug!("Successfully sent message to job declaration server");
+                  //             return Ok(ResponseFromSv2Client::Ok);
+                  //         },
+                  //         Err(e) => Err(e.into()),
+                  //     }
+                  // }
             };
 
             // allows for recursive chaining of requests
