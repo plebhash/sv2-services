@@ -58,9 +58,7 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
         // Similar to `handle_new_template`, this forwards the new previous hash to the MiningServer.
         let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
             RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(
-                    prev_hash,
-                )),
+                RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(prev_hash)),
             )),
         ));
         Ok(response)

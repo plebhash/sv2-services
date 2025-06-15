@@ -6,7 +6,7 @@ use tower_stratum::{
     client::service::{
         Sv2ClientService, request::RequestToSv2Client,
         subprotocols::mining::handler::NullSv2MiningClientHandler,
-        subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService,
+        subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger,
     },
     server::service::Sv2ServerService,
     tower::Service,
@@ -78,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
     // This step is necessary to start receiving new templates.
     client_service
         .call(RequestToSv2Client::TemplateDistributionTrigger(
-            RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+            TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                 config
                     .client_config
                     .template_distribution_config

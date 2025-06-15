@@ -1,5 +1,5 @@
-use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
-use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use crate::client::service::subprotocols::mining::trigger::MiningClientTrigger;
+use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
 use roles_logic_sv2::common_messages_sv2::Protocol;
@@ -13,8 +13,8 @@ pub enum RequestToSv2Client<'a> {
     /// Some Sv2 message addressed to the client.
     /// Could belong to any subprotocol.
     IncomingMessage(AnyMessage<'a>),
-    MiningTrigger(RequestToSv2MiningClientService),
-    TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService<'a>),
+    MiningTrigger(MiningClientTrigger),
+    TemplateDistributionTrigger(TemplateDistributionClientTrigger<'a>),
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
     SendMessageToMiningServer(Box<(Mining<'a>, u8)>), // message, message_type
     SendMessageToTemplateDistributionServer(Box<(TemplateDistribution<'a>, u8)>),
