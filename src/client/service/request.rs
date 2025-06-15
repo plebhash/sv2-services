@@ -12,7 +12,7 @@ pub enum RequestToSv2Client<'a> {
     SetupConnectionTrigger(Protocol, u32), // protocol, flags
     /// Some Sv2 message addressed to the client.
     /// Could belong to any subprotocol.
-    Message(AnyMessage<'a>),
+    IncomingMessage(AnyMessage<'a>),
     MiningTrigger(RequestToSv2MiningClientService),
     TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService<'a>),
     /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.

@@ -475,7 +475,7 @@ where
                 message_result = tcp_client.io.recv_message() => {
                     match message_result {
                         Ok((message, _)) => {
-                            if let Err(e) = self.call(RequestToSv2Client::Message(message)).await {
+                            if let Err(e) = self.call(RequestToSv2Client::IncomingMessage(message)).await {
                                 // this is a protection from attacks where a server sends a message that it knows the client cannot handle
                                 // we simply log the error and ignore the message, without shutting down the client
                                 error!("Error handling message: {:?}, message will be ignored", e);
@@ -631,7 +631,7 @@ where
                         this.initiate_connection(protocol, 0).await
                     }
                 },
-                RequestToSv2Client::Message(sv2_message) => {
+                RequestToSv2Client::IncomingMessage(sv2_message) => {
                     match sv2_message {
                         AnyMessage::Common(common) => match common {
                             CommonMessages::SetupConnection(_) => {
