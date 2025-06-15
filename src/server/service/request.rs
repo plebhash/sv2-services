@@ -42,4 +42,7 @@ pub enum RequestToSv2ServerError {
     FailedToSendRequestToSiblingClientService,
     NoSiblingClientService,
     Reply(Box<Sv2MessageToClient<'static>>),
+    MiningHandlerError(String),
+    TemplateDistributionHandlerError(String),
+    JobDeclarationHandlerError(String),
 }

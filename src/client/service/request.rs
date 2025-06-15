@@ -32,6 +32,9 @@ pub enum RequestToSv2ClientError {
     NoSiblingServerServiceIo,
     FailedToSendRequestToSiblingServerService,
     U256ConversionError(String),
+    MiningHandlerError(String),
+    TemplateDistributionHandlerError(String),
+    JobDeclarationHandlerError(String),
 }
 
 impl From<Sv2MessageIoError> for RequestToSv2ClientError {
