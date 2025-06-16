@@ -307,15 +307,15 @@ where
     }
 
     async fn remove_all_clients(&mut self) {
-        if !Self::has_null_handler(Protocol::MiningProtocol) {
-            self.mining_handler.remove_all_clients().await;
-        }
-
-        // todo: remove clients from other subprotocols
-
         let mut clients = self.clients.write().await;
-        for (_, client) in clients.drain() {
+        for (client_id, client) in clients.drain() {
             client.read().await.io.shutdown();
+
+            if !Self::has_null_handler(Protocol::MiningProtocol) {
+                self.mining_handler.remove_client(client_id).await;
+            }
+
+            // todo: remove client from other subprotocols
         }
     }
 
@@ -582,8 +582,14 @@ where
     /// 1. Stop accepting new client connections
     /// 2. Stop the inactive connection monitor
     /// 3. Stop all client message handlers
-    pub async fn shutdown(&self) {
+    pub async fn shutdown(&mut self) {
         debug!("Initiating shutdown of Sv2ServerService");
+
+        if !Self::has_null_handler(Protocol::MiningProtocol) {
+            self.mining_handler.shutdown().await;
+        }
+
+        // todo: send shutdown to other subprotocol handlers
 
         // Send shutdown signal to all tasks
         if let Err(e) = self.shutdown_tx.send(()) {

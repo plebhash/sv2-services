@@ -28,7 +28,8 @@ pub trait Sv2MiningServerHandler {
 
     fn remove_client(&mut self, client_id: u32) -> impl std::future::Future<Output = ()> + Send;
 
-    fn remove_all_clients(&mut self) -> impl std::future::Future<Output = ()> + Send;
+    /// Should be used to kill any spawned tasks
+    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
 
     fn handle_open_standard_mining_channel(
         &self,
@@ -136,9 +137,9 @@ impl Sv2MiningServerHandler for NullSv2MiningServerHandler {
         unimplemented!("NullSv2MiningServerHandler does not implement remove_client")
     }
 
-    /// Remove all clients from the subprotocol handler
-    async fn remove_all_clients(&mut self) {
-        unimplemented!("NullSv2MiningServerHandler does not implement remove_all_clients")
+    /// Shutdown the subprotocol handler
+    async fn shutdown(&mut self) {
+        unimplemented!("NullSv2MiningServerHandler does not implement shutdown")
     }
 
     /// Handle an OpenStandardMiningChannel message

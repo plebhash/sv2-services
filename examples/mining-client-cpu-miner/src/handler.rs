@@ -21,6 +21,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         Poll::Ready(Ok(()))
     }
 
+    /// Should be used to kill any spawned tasks
+    async fn shutdown(&mut self) {}
+
     async fn handle_open_standard_mining_channel_success(
         &self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,

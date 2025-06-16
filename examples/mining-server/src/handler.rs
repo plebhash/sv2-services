@@ -48,11 +48,8 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         self.clients.write().await.remove(&client_id);
     }
 
-    async fn remove_all_clients(&mut self) {
-        let num_clients = self.clients.read().await.len();
-        info!("removing all {} clients", num_clients);
-        self.clients.write().await.clear();
-    }
+    // no spawned tasks, therefore empty shutdown method
+    async fn shutdown(&mut self) {}
 
     async fn handle_open_standard_mining_channel(
         &self,
