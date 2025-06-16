@@ -53,8 +53,8 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         info!("removing client with id: {}", client_id);
     }
 
-    async fn remove_all_clients(&mut self) {
-        info!("removing all clients");
+    // no spawned tasks, therefore empty shutdown method
+    async fn shutdown(&mut self) {
     }
 
     async fn handle_open_standard_mining_channel(

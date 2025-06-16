@@ -978,19 +978,24 @@ where
                             max_additional_sigops,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
-                            this.template_distribution_handler.set_coinbase_output_constraints(max_additional_size, max_additional_sigops).await
+                            this.template_distribution_handler
+                                .set_coinbase_output_constraints(
+                                    max_additional_size,
+                                    max_additional_sigops,
+                                )
+                                .await
                         }
-                        TemplateDistributionClientTrigger::TransactionDataNeeded(
-                            _template_id,
-                        ) => {
+                        TemplateDistributionClientTrigger::TransactionDataNeeded(_template_id) => {
                             debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
-                            this.template_distribution_handler.transaction_data_needed(_template_id).await
+                            this.template_distribution_handler
+                                .transaction_data_needed(_template_id)
+                                .await
                         }
-                        TemplateDistributionClientTrigger::SubmitSolution(
-                            submit_solution,
-                        ) => {
+                        TemplateDistributionClientTrigger::SubmitSolution(submit_solution) => {
                             debug!("Sv2ClientService received a trigger request for sending SubmitSolution");
-                            this.template_distribution_handler.submit_solution(submit_solution).await
+                            this.template_distribution_handler
+                                .submit_solution(submit_solution)
+                                .await
                         }
                     }
                 }
@@ -1175,6 +1180,8 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn shutdown(&mut self) {}
+
         async fn handle_open_standard_mining_channel_success(
             &self,
             _open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'_>,
@@ -1293,6 +1300,8 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn shutdown(&mut self) {}
+
         async fn handle_new_template(
             &self,
             _template: NewTemplate<'_>,
@@ -1333,6 +1342,8 @@ mod tests {
         ) -> Poll<Result<(), RequestToSv2ClientError>> {
             Poll::Ready(Ok(()))
         }
+
+        async fn shutdown(&mut self) {}
 
         async fn handle_new_template(
             &self,
@@ -1410,7 +1421,7 @@ mod tests {
 
         async fn remove_client(&mut self, _client_id: u32) {}
 
-        async fn remove_all_clients(&mut self) {}
+        async fn shutdown(&mut self) {}
 
         async fn handle_open_standard_mining_channel(
             &self,

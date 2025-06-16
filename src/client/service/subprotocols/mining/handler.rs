@@ -14,6 +14,9 @@ use std::task::{Context, Poll};
 pub trait Sv2MiningClientHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>>;
 
+    /// Should be used to kill any spawned tasks
+    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
+
     fn handle_open_standard_mining_channel_success(
         &self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
@@ -134,6 +137,10 @@ pub struct NullSv2MiningClientHandler;
 impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>> {
         unimplemented!("NullSv2TemplateDistributionClientHandler does not implement poll_ready");
+    }
+
+    async fn shutdown(&mut self) {
+        unimplemented!("NullSv2MiningClientHandler does not implement shutdown");
     }
 
     async fn handle_open_standard_mining_channel_success(

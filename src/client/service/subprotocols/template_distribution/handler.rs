@@ -15,6 +15,9 @@ use std::task::{Context, Poll};
 pub trait Sv2TemplateDistributionClientHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>>;
 
+    /// Should be used to kill any spawned tasks
+    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
+
     fn handle_new_template(
         &self,
         template: NewTemplate<'static>,
@@ -117,6 +120,10 @@ pub struct NullSv2TemplateDistributionClientHandler;
 impl Sv2TemplateDistributionClientHandler for NullSv2TemplateDistributionClientHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>> {
         unimplemented!("NullSv2TemplateDistributionClientHandler does not implement poll_ready");
+    }
+
+    async fn shutdown(&mut self) {
+        unimplemented!("NullSv2TemplateDistributionClientHandler does not implement shutdown");
     }
 
     async fn handle_new_template(
