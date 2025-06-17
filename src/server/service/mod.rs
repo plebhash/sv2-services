@@ -20,7 +20,6 @@ use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::{broadcast, RwLock};
@@ -65,7 +64,6 @@ where
     // todo: job_declaration_handler: J,
     // todo: template_distribution_handler: T,
     shutdown_tx: broadcast::Sender<()>,
-    alive: Arc<AtomicBool>,
     sibling_client_service_io: Option<Sv2SiblingClientServiceIo>,
 }
 
@@ -116,7 +114,6 @@ where
             client_id_generator: ClientIdGenerator::new(),
             mining_handler,
             shutdown_tx: broadcast::channel(1).0,
-            alive: Arc::new(AtomicBool::new(false)),
             sibling_client_service_io,
         };
 
@@ -142,7 +139,6 @@ where
 
         let clients = self.clients.clone();
         let inactivity_limit = self.config.inactivity_limit;
-        let alive = self.alive.clone();
         let mut this = self.clone();
 
         // spawn a task to monitor for inactive connections and clean up the HashMap
@@ -153,7 +149,6 @@ where
                     _ = shutdown_rx.recv() => {
                         debug!("Inactive connection monitor received shutdown signal");
                         this.remove_all_clients().await;
-                        alive.store(false, Ordering::Relaxed);
                         break;
                     }
                     // yield back to the tokio runtime
@@ -286,7 +281,6 @@ where
             });
         }
 
-        self.alive.store(true, Ordering::Relaxed);
         debug!("Sv2ServerService started");
 
         Ok(())
@@ -573,10 +567,6 @@ where
             .insert(client_id, Arc::new(RwLock::new(client)));
     }
 
-    pub fn is_alive(&self) -> bool {
-        self.alive.load(Ordering::Relaxed)
-    }
-
     /// Shuts down all spawned tasks gracefully.
     /// This will:
     /// 1. Stop accepting new client connections
@@ -596,9 +586,6 @@ where
             error!("Failed to send shutdown signal: {}", e);
         }
 
-        while self.is_alive() {
-            tokio::task::yield_now().await;
-        }
         debug!("Sv2ServerService shutdown complete");
     }
 }
@@ -1701,10 +1688,6 @@ mod tests {
         assert_eq!(client_count, 2);
 
         sv2_server_service.shutdown().await;
-
-        // Verify all clients were cleaned up
-        let final_count = sv2_server_service.get_client_count().await;
-        assert_eq!(final_count, 0);
 
         // Try to receive messages from clients - should fail as connections are closed
         assert!(client1.io.recv_message().await.is_err());
