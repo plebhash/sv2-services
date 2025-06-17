@@ -168,7 +168,7 @@ mod tests {
         // Send SetupConnection from client
         sv2_encrypted_tcp_client
             .io
-            .send_message(setup_connection.into(), MESSAGE_TYPE_SETUP_CONNECTION)
+            .send_message(setup_connection.into())
             .await
             .unwrap();
 

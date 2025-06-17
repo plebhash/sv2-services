@@ -1,7 +1,6 @@
 use anyhow::Result;
 use binary_sv2::B032;
 use binary_sv2::U256;
-use roles_logic_sv2::mining_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS;
 use roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel,
     OpenStandardMiningChannelSuccess, SetCustomMiningJob, SubmitSharesExtended,
@@ -80,17 +79,14 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
 
         let message = Sv2MessagesToClient {
             client_id,
-            messages: vec![(
-                AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(
-                    OpenStandardMiningChannelSuccess {
-                        request_id,
-                        channel_id: 0,
-                        target,
-                        extranonce_prefix,
-                        group_channel_id: 0,
-                    },
-                )),
-                MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS,
+            messages: vec![AnyMessage::Mining(
+                Mining::OpenStandardMiningChannelSuccess(OpenStandardMiningChannelSuccess {
+                    request_id,
+                    channel_id: 0,
+                    target,
+                    extranonce_prefix,
+                    group_channel_id: 0,
+                }),
             )],
         };
         info!(

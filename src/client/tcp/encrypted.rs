@@ -56,10 +56,8 @@ impl Sv2EncryptedTcpClient {
 mod tests {
     use super::*;
     use crate::Sv2MessageFrame;
+    use roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS;
     use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-    use roles_logic_sv2::common_messages_sv2::{
-        MESSAGE_TYPE_SETUP_CONNECTION, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-    };
 
     #[tokio::test]
     async fn new_sv2_encrypted_tcp_client_works() {
@@ -85,7 +83,7 @@ mod tests {
         // send SetupConnection from client
         sv2_encrypted_tcp_client
             .io
-            .send_message(setup_connection.into(), MESSAGE_TYPE_SETUP_CONNECTION)
+            .send_message(setup_connection.into())
             .await
             .unwrap();
 

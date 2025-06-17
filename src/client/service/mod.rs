@@ -10,10 +10,7 @@ use crate::client::service::subprotocols::template_distribution::handler::NullSv
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
-use roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION;
 use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-use roles_logic_sv2::mining_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
-use roles_logic_sv2::mining_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL;
 use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
 use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
 use std::future::Future;
@@ -400,14 +397,11 @@ where
         };
 
         // Send the setup connection message using the io field
-        tcp_client
-            .io
-            .send_message(setup_connection.into(), MESSAGE_TYPE_SETUP_CONNECTION)
-            .await?;
+        tcp_client.io.send_message(setup_connection.into()).await?;
 
         // wait for the server to respond with a SetupConnectionSuccess or SetupConnectionError
         // and return the appropriate response
-        let (message, _) = tcp_client.io.recv_message().await?;
+        let message = tcp_client.io.recv_message().await?;
         match message {
             AnyMessage::Common(CommonMessages::SetupConnectionSuccess(
                 setup_connection_success,
@@ -471,7 +465,7 @@ where
                 }
                 message_result = tcp_client.io.recv_message() => {
                     match message_result {
-                        Ok((message, _)) => {
+                        Ok(message) => {
                             if let Err(e) = self.call(RequestToSv2Client::IncomingMessage(message)).await {
                                 // this is a protection from attacks where a server sends a message that it knows the client cannot handle
                                 // we simply log the error and ignore the message, without shutting down the client
@@ -887,10 +881,7 @@ where
 
                             let result = tcp_client
                                 .io
-                                .send_message(
-                                    open_standard_mining_channel,
-                                    MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
-                                )
+                                .send_message(open_standard_mining_channel)
                                 .await;
                             match result {
                                 Ok(_) => {
@@ -941,10 +932,7 @@ where
 
                             let result = tcp_client
                                 .io
-                                .send_message(
-                                    open_extended_mining_channel,
-                                    MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL,
-                                )
+                                .send_message(open_extended_mining_channel)
                                 .await;
                             match result {
                                 Ok(_) => {
@@ -1038,7 +1026,7 @@ where
 
                     match tcp_client
                         .io
-                        .send_message(AnyMessage::Mining(message.0), message.1)
+                        .send_message(AnyMessage::Mining(*message))
                         .await
                     {
                         Ok(_) => {
@@ -1072,7 +1060,7 @@ where
 
                     match tcp_client
                         .io
-                        .send_message(AnyMessage::TemplateDistribution(message.0), message.1)
+                        .send_message(AnyMessage::TemplateDistribution(*message))
                         .await
                     {
                         Ok(_) => {

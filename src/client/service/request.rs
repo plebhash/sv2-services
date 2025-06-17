@@ -16,8 +16,8 @@ pub enum RequestToSv2Client<'a> {
     MiningTrigger(MiningClientTrigger),
     TemplateDistributionTrigger(TemplateDistributionClientTrigger<'a>),
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
-    SendMessageToMiningServer(Box<(Mining<'a>, u8)>), // message, message_type
-    SendMessageToTemplateDistributionServer(Box<(TemplateDistribution<'a>, u8)>),
+    SendMessageToMiningServer(Box<Mining<'a>>),
+    SendMessageToTemplateDistributionServer(Box<TemplateDistribution<'a>>),
     // SendMessageToJobDeclarationServer(Box<(JobDeclaration<'a>, u8)>),
 }
 

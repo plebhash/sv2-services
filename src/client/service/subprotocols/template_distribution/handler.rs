@@ -5,8 +5,6 @@ use roles_logic_sv2::parsers::TemplateDistribution;
 use roles_logic_sv2::template_distribution_sv2::{
     CoinbaseOutputConstraints, NewTemplate, RequestTransactionData, RequestTransactionDataError,
     RequestTransactionDataSuccess, SetNewPrevHash, SubmitSolution,
-    MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
-    MESSAGE_TYPE_SUBMIT_SOLUTION,
 };
 
 use std::task::{Context, Poll};
@@ -57,10 +55,7 @@ pub trait Sv2TemplateDistributionClientHandler {
 
         async move {
             Ok(ResponseFromSv2Client::TriggerNewRequest(Box::new(
-                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new((
-                    message,
-                    MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
-                ))),
+                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new(message)),
             )))
         }
     }
@@ -79,10 +74,7 @@ pub trait Sv2TemplateDistributionClientHandler {
 
         async move {
             Ok(ResponseFromSv2Client::TriggerNewRequest(Box::new(
-                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new((
-                    message,
-                    MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
-                ))),
+                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new(message)),
             )))
         }
     }
@@ -97,10 +89,7 @@ pub trait Sv2TemplateDistributionClientHandler {
 
         async move {
             Ok(ResponseFromSv2Client::TriggerNewRequest(Box::new(
-                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new((
-                    message,
-                    MESSAGE_TYPE_SUBMIT_SOLUTION,
-                ))),
+                RequestToSv2Client::SendMessageToTemplateDistributionServer(Box::new(message)),
             )))
         }
     }

@@ -212,7 +212,7 @@ where
                                     }
                                     message_result = io.recv_message() => {
                                         match message_result {
-                                            Ok((message, _message_type)) => {
+                                            Ok(message) => {
                                                 let request = RequestToSv2Server::IncomingMessage(Sv2MessageToServer {
                                                     message,
                                                     client_id: Some(client_id),
@@ -413,10 +413,7 @@ where
             let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
                 RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
                     client_id,
-                    messages: vec![(
-                        setup_connection_error.into(),
-                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-                    )],
+                    messages: vec![setup_connection_error.into()],
                 })),
             ));
             return Ok(response);
@@ -438,10 +435,7 @@ where
             let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
                 RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
                     client_id,
-                    messages: vec![(
-                        setup_connection_error.into(),
-                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-                    )],
+                    messages: vec![setup_connection_error.into()],
                 })),
             ));
             return Ok(response);
@@ -488,10 +482,7 @@ where
             let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
                 RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
                     client_id,
-                    messages: vec![(
-                        setup_connection_error.into(),
-                        roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-                    )],
+                    messages: vec![setup_connection_error.into()],
                 })),
             ));
 
@@ -548,10 +539,7 @@ where
         let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
             RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
                 client_id,
-                messages: vec![(
-                    setup_connection_success.into(),
-                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-                )],
+                messages: vec![setup_connection_success.into()],
             })),
         ));
 
@@ -865,8 +853,8 @@ where
 
                     let messages = sv2_messages_to_client.messages;
 
-                    for (message, message_type) in messages {
-                        match io.send_message(message, message_type).await {
+                    for message in messages {
+                        match io.send_message(message).await {
                             Ok(_) => {
                                 continue;
                             }
@@ -897,8 +885,8 @@ where
                             }
                         };
 
-                        for (message, message_type) in sv2_messages_to_client.messages.clone() {
-                            match io.send_message(message, message_type).await {
+                        for message in sv2_messages_to_client.messages.clone() {
+                            match io.send_message(message).await {
                                 Ok(_) => {
                                     continue;
                                 }
@@ -1007,10 +995,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
@@ -1126,20 +1111,14 @@ mod tests {
         // Send SetupConnection message through the first client
         client_1
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
         // Send SetupConnection message through the second client
         client_2
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
@@ -1218,10 +1197,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_protocol.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_protocol.clone().into())
             .await
             .unwrap();
 
@@ -1321,10 +1297,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_min_version.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_min_version.clone().into())
             .await
             .unwrap();
 
@@ -1369,10 +1342,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_max_version.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_max_version.clone().into())
             .await
             .unwrap();
 
@@ -1471,10 +1441,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_unsupported_flags.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_unsupported_flags.clone().into())
             .await
             .unwrap();
 
@@ -1668,18 +1635,12 @@ mod tests {
         // Send SetupConnection messages
         client1
             .io
-            .send_message(
-                setup_connection.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection.clone().into())
             .await
             .unwrap();
         client2
             .io
-            .send_message(
-                setup_connection.clone().into(),
-                roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection.clone().into())
             .await
             .unwrap();
 

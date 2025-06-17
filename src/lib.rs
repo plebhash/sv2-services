@@ -8,8 +8,8 @@
 //! The goal is to provide a "batteries-included" approach to implement stateful Sv2 applications.
 
 use async_channel::{Receiver, Sender};
-use codec_sv2::StandardEitherFrame;
-use framing_sv2::framing::{Frame, Sv2Frame};
+use codec_sv2::{StandardEitherFrame, StandardSv2Frame};
+use framing_sv2::framing::Frame;
 use roles_logic_sv2::parsers::{
     AnyMessage, CommonMessages,
     JobDeclaration::{
@@ -44,6 +44,9 @@ pub mod server;
 /// alias to abstract away [`codec_sv2::StandardEitherFrame`] and [`roles_logic_sv2::parsers::AnyMessage`]
 pub type Sv2MessageFrame = StandardEitherFrame<AnyMessage<'static>>;
 
+/// alias to abstract away [`codec_sv2::StandardSv2Frame`] and [`roles_logic_sv2::parsers::AnyMessage`]
+pub type StandardSv2MessageFrame = StandardSv2Frame<AnyMessage<'static>>;
+
 /// Sv2 Message IO as [`async_channel`] of [`Sv2MessageFrame`]
 ///
 /// Note: [`Sv2MessageIo`] is NOT a [`tower::Service`],
@@ -64,12 +67,12 @@ impl Sv2MessageIo {
     pub async fn send_message(
         &self,
         message: AnyMessage<'static>,
-        msg_type: u8,
     ) -> Result<(), Sv2MessageIoError> {
-        let frame = Sv2MessageFrame::Sv2(
-            Sv2Frame::from_message(message, msg_type, 0, false)
-                .ok_or(Sv2MessageIoError::FrameError)?,
-        );
+        let frame: Sv2MessageFrame = message
+            .clone()
+            .try_into()
+            .map_err(|_| Sv2MessageIoError::FrameError)
+            .map(|sv2_frame: StandardSv2MessageFrame| sv2_frame.into())?;
         self.tx
             .send(frame)
             .await
@@ -77,7 +80,7 @@ impl Sv2MessageIo {
         Ok(())
     }
 
-    pub async fn recv_message(&self) -> Result<(AnyMessage<'static>, u8), Sv2MessageIoError> {
+    pub async fn recv_message(&self) -> Result<AnyMessage<'static>, Sv2MessageIoError> {
         let frame = self
             .rx
             .recv()
@@ -94,7 +97,7 @@ impl Sv2MessageIo {
                     match message {
                         Ok(message) => {
                             let message = Self::into_static(message);
-                            Ok((message, message_type))
+                            Ok(message)
                         }
                         _ => Err(Sv2MessageIoError::FrameError),
                     }
