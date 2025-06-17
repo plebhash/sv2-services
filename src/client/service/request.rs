@@ -19,6 +19,8 @@ pub enum RequestToSv2Client<'a> {
     SendMessageToMiningServer(Box<Mining<'a>>),
     SendMessageToTemplateDistributionServer(Box<TemplateDistribution<'a>>),
     // SendMessageToJobDeclarationServer(Box<(JobDeclaration<'a>, u8)>),
+    /// Execute an ordered sequence of requests.
+    MultipleRequests(Box<Vec<RequestToSv2Client<'a>>>),
 }
 
 /// The error type for the [`crate::client::service::Sv2ClientService`] service.

@@ -901,6 +901,23 @@ where
 
                     return Ok(ResponseFromSv2Server::Ok);
                 }
+                RequestToSv2Server::MultipleRequests(reqs) => {
+                    debug!(
+                        "Sv2ServerService received a MultipleRequests request: {:?}",
+                        reqs
+                    );
+
+                    for req in reqs.as_ref() {
+                        if let Err(e) = this.call(req.clone()).await {
+                            error!(
+                                "RequestToSv2Server::MultipleRequests {:?} generated an error {:?}",
+                                req, e
+                            );
+                            return Err(e);
+                        }
+                    }
+                    Ok(ResponseFromSv2Server::Ok)
+                }
             };
 
             // allow for recursive chaining of requests

@@ -1070,26 +1070,38 @@ where
                         Err(e) => Err(e.into()),
                     }
                 } // RequestToSv2Client::SendMessageToJobDeclarationServer(message) => {
-                  //     if this.config.job_declaration_config.is_none() || std::any::TypeId::of::<J>() == std::any::TypeId::of::<NullSv2JobDeclarationClientHandler>() {
-                  //         return Err(RequestToSv2ClientError::UnsupportedProtocol {
-                  //             protocol: Protocol::JobDeclarationProtocol,
-                  //         });
-                  //     }
+                //     if this.config.job_declaration_config.is_none() || std::any::TypeId::of::<J>() == std::any::TypeId::of::<NullSv2JobDeclarationClientHandler>() {
+                //         return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                //             protocol: Protocol::JobDeclarationProtocol,
+                //         });
+                //     }
 
-                  //     if this.job_declaration_tcp_client.read().await.is_none() {
-                  //         return Err(RequestToSv2ClientError::IsNotConnected);
-                  //     }
+                //     if this.job_declaration_tcp_client.read().await.is_none() {
+                //         return Err(RequestToSv2ClientError::IsNotConnected);
+                //     }
 
-                  //     let tcp_client = this.job_declaration_tcp_client.read().await.as_ref().expect("job_declaration_tcp_client should be Some").clone();
+                //     let tcp_client = this.job_declaration_tcp_client.read().await.as_ref().expect("job_declaration_tcp_client should be Some").clone();
 
-                  //     match tcp_client.io.send_message(AnyMessage::JobDeclaration(message.0), message.1).await {
-                  //         Ok(_) => {
-                  //             debug!("Successfully sent message to job declaration server");
-                  //             return Ok(ResponseFromSv2Client::Ok);
-                  //         },
-                  //         Err(e) => Err(e.into()),
-                  //     }
-                  // }
+                //     match tcp_client.io.send_message(AnyMessage::JobDeclaration(message.0), message.1).await {
+                //         Ok(_) => {
+                //             debug!("Successfully sent message to job declaration server");
+                //             return Ok(ResponseFromSv2Client::Ok);
+                //         },
+                //         Err(e) => Err(e.into()),
+                //     }
+                // }
+                RequestToSv2Client::MultipleRequests(reqs) => {
+                    for req in reqs.as_ref() {
+                        if let Err(e) = this.call(req.clone()).await {
+                            error!(
+                                "RequestToSv2Client::MultipleRequests {:?} generated an error {:?}",
+                                req, e
+                            );
+                            return Err(e);
+                        }
+                    }
+                    Ok(ResponseFromSv2Client::Ok)
+                }
             };
 
             // allows for recursive chaining of requests

@@ -22,6 +22,8 @@ pub enum RequestToSv2Server<'a> {
     SendMessagesToClient(Box<Sv2MessagesToClient<'a>>),
     /// Send ordered sequences of Sv2 messages to different clients.
     SendMessagesToClients(Box<Vec<Sv2MessagesToClient<'a>>>),
+    /// Execute an ordered sequence of requests.
+    MultipleRequests(Box<Vec<RequestToSv2Server<'a>>>),
 }
 
 /// A Sv2 message addressed to the server, to be used as the request type of [`crate::server::service::Sv2ServerService`].
