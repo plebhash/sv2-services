@@ -44,5 +44,5 @@ impl Sv2ServerServiceClient {
 #[derive(Debug, Clone)]
 pub struct Sv2MessagesToClient<'a> {
     pub client_id: u32,
-    pub messages: Vec<(AnyMessage<'a>, u8)>,
+    pub messages: Vec<AnyMessage<'a>>,
 }
