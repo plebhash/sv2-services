@@ -151,8 +151,7 @@ where
                         this.remove_all_clients().await;
                         break;
                     }
-                    // yield back to the tokio runtime
-                    _ = tokio::task::yield_now() => {
+                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
                         let mut clients_to_remove = Vec::new();
                         {
                             let clients_guard = clients.read().await;
