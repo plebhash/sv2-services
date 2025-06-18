@@ -1,4 +1,5 @@
 server_addr = "127.0.0.1:3333"
 auth_pk = "9auqWEzQDVyd2oe1JVGFLMLHZtCo2FFqZwtKA5gd9xbuEu7PH72"
-extranonce_rolling = true
+n_extended_channels = 2
+n_standard_channels = 2
 user_identity = "tower-stratum-mining-client-example"

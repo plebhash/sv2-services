@@ -4,17 +4,12 @@ use anyhow::{Result, anyhow};
 use tower_stratum::client::service::Sv2ClientService;
 use tower_stratum::client::service::config::Sv2ClientServiceConfig;
 use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::client::service::response::ResponseFromSv2Client;
-use tower_stratum::client::service::subprotocols::mining::trigger::MiningClientTrigger;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
-use tower_stratum::tower::{Service, ServiceExt};
 use tracing::info;
+
 pub struct MyMiningClient {
     sv2_client_service:
         Sv2ClientService<MyMiningClientHandler, NullSv2TemplateDistributionClientHandler>,
-    user_identity: String,
-    extranonce_rolling: bool,
 }
 
 impl MyMiningClient {
@@ -40,7 +35,11 @@ impl MyMiningClient {
 
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
-        let mining_handler = MyMiningClientHandler::default();
+        let mining_handler = MyMiningClientHandler::new(
+            config.user_identity,
+            config.n_extended_channels,
+            config.n_standard_channels,
+        );
 
         let sv2_client_service = Sv2ClientService::new(
             service_config,
@@ -49,11 +48,7 @@ impl MyMiningClient {
         )
         .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
 
-        Ok(Self {
-            sv2_client_service,
-            user_identity: config.user_identity,
-            extranonce_rolling: config.extranonce_rolling,
-        })
+        Ok(Self { sv2_client_service })
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -61,62 +56,6 @@ impl MyMiningClient {
             .start()
             .await
             .map_err(|e| anyhow!("Failed to start Sv2ClientService: {:?}", e))?;
-        self.sv2_client_service
-            .ready()
-            .await
-            .map_err(|e| anyhow!("Service is not ready: {:?}", e))?;
-
-        // todo: try to open extended or standard channel with the server
-        // depending on the extranonce_rolling config parameter
-        match self.extranonce_rolling {
-            false => {
-                let open_standard_mining_channel_response = self
-                    .sv2_client_service
-                    .call(RequestToSv2Client::MiningTrigger(
-                        MiningClientTrigger::OpenStandardMiningChannel(
-                            0, // todo
-                            self.user_identity.clone(),
-                            10.0,              // todo
-                            vec![0xFF_u8; 32], // todo
-                        ),
-                    ))
-                    .await
-                    .map_err(|e| anyhow!("Failed to open standard mining channel: {:?}", e))?;
-
-                match open_standard_mining_channel_response {
-                    ResponseFromSv2Client::Ok => {
-                        info!("Successfully sent open standard mining channel request");
-                    }
-                    _ => {
-                        return Err(anyhow!("Failed to open standard mining channel"));
-                    }
-                }
-            }
-            true => {
-                let open_extended_mining_channel_response = self
-                    .sv2_client_service
-                    .call(RequestToSv2Client::MiningTrigger(
-                        MiningClientTrigger::OpenExtendedMiningChannel(
-                            0, // todo
-                            self.user_identity.clone(),
-                            10.0,              // todo
-                            vec![0xFF_u8; 32], // todo
-                            1,
-                        ),
-                    ))
-                    .await
-                    .map_err(|e| anyhow!("Failed to open extended mining channel: {:?}", e))?;
-
-                match open_extended_mining_channel_response {
-                    ResponseFromSv2Client::Ok => {
-                        info!("Successfully sent open extended mining channel request");
-                    }
-                    _ => {
-                        return Err(anyhow!("Failed to open extended mining channel"));
-                    }
-                }
-            }
-        }
 
         Ok(())
     }
