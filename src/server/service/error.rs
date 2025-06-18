@@ -21,6 +21,10 @@ pub enum Sv2ServerServiceError {
     },
     /// Occurs when the TCP server fails to start.
     TcpServerError,
+    /// Occurs when the mining handler fails to start.
+    FailedToStartMiningHandler,
+    // FailedToStartJobDeclarationHandler,
+    // FailedToStartTemplateDistributionHandler,
     /// Other errors that might occur in the future.
     Other(String),
 }
@@ -49,6 +53,15 @@ impl fmt::Display for Sv2ServerServiceError {
                     protocol
                 )
             }
+            Sv2ServerServiceError::FailedToStartMiningHandler => {
+                write!(f, "Failed to start mining handler")
+            }
+            // Sv2ServerServiceError::FailedToStartJobDeclarationHandler => {
+            //     write!(f, "Failed to start job declaration handler")
+            // }
+            // Sv2ServerServiceError::FailedToStartTemplateDistributionHandler => {
+            //     write!(f, "Failed to start template distribution handler")
+            // }
             Sv2ServerServiceError::Other(msg) => write!(f, "{}", msg),
             Sv2ServerServiceError::TcpServerError => write!(f, "TCP server failed to start"),
         }

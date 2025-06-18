@@ -229,9 +229,43 @@ where
             }
         }
 
-        self.ready()
-            .await
-            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+        if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
+            match self
+                .call(RequestToSv2Client::MiningTrigger(
+                    MiningClientTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Mining handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start mining handler: {:?}", e);
+                    return Err(Sv2ClientServiceError::FailedToStartMiningHandler);
+                }
+            }
+        }
+
+        // todo: start job declaration handler
+
+        if std::any::TypeId::of::<T>()
+            != std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+        {
+            match self
+                .call(RequestToSv2Client::TemplateDistributionTrigger(
+                    TemplateDistributionClientTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Template distribution handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start template distribution handler: {:?}", e);
+                    return Err(Sv2ClientServiceError::FailedToStartTemplateDistributionHandler);
+                }
+            }
+        }
 
         Ok(())
     }
@@ -843,6 +877,10 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
+                        MiningClientTrigger::Start => {
+                            debug!("Sv2ClientService received a trigger request for starting the mining handler");
+                            this.mining_handler.start().await
+                        }
                         MiningClientTrigger::OpenStandardMiningChannel(
                             request_id,
                             user_identity,
@@ -961,6 +999,10 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
+                        TemplateDistributionClientTrigger::Start => {
+                            debug!("Sv2ClientService received a trigger request for starting the template distribution handler");
+                            this.template_distribution_handler.start().await
+                        }
                         TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                             max_additional_size,
                             max_additional_sigops,
@@ -1180,6 +1222,12 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
+        }
+
         async fn shutdown(&mut self) {}
 
         async fn handle_open_standard_mining_channel_success(
@@ -1300,6 +1348,12 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
+        }
+
         async fn shutdown(&mut self) {}
 
         async fn handle_new_template(
@@ -1341,6 +1395,12 @@ mod tests {
             _cx: &mut Context<'_>,
         ) -> Poll<Result<(), RequestToSv2ClientError>> {
             Poll::Ready(Ok(()))
+        }
+
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn shutdown(&mut self) {}
@@ -1399,6 +1459,14 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+            Ok(ResponseFromSv2Server::Ok)
+        }
+
+        async fn shutdown(&mut self) {}
+
         async fn on_new_template(
             &self,
             _m: NewTemplate<'static>,
@@ -1420,8 +1488,6 @@ mod tests {
         async fn add_client(&mut self, _client_id: u32, _flags: u32) {}
 
         async fn remove_client(&mut self, _client_id: u32) {}
-
-        async fn shutdown(&mut self) {}
 
         async fn handle_open_standard_mining_channel(
             &self,

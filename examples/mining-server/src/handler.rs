@@ -30,6 +30,13 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         Poll::Ready(Ok(()))
     }
 
+    async fn start(&mut self) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+        Ok(ResponseFromSv2Server::Ok)
+    }
+
+    // no spawned tasks, therefore empty shutdown method
+    async fn shutdown(&mut self) {}
+
     fn setup_connection_success_flags(&self) -> u32 {
         0
     }
@@ -46,9 +53,6 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         info!("removing client with id: {}", client_id);
         self.clients.write().await.remove(&client_id);
     }
-
-    // no spawned tasks, therefore empty shutdown method
-    async fn shutdown(&mut self) {}
 
     async fn handle_open_standard_mining_channel(
         &self,

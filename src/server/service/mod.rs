@@ -280,6 +280,26 @@ where
             });
         }
 
+        if !Self::has_null_handler(Protocol::MiningProtocol) {
+            match self
+                .call(RequestToSv2Server::MiningTrigger(
+                    MiningServerTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Mining handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start mining handler: {:?}", e);
+                    return Err(Sv2ServerServiceError::FailedToStartMiningHandler);
+                }
+            }
+        }
+
+        // todo: start job declaration handler
+        // todo: start template distribution handler
+
         debug!("Sv2ServerService started");
 
         Ok(())
@@ -805,12 +825,18 @@ where
                     }
                 }
                 RequestToSv2Server::MiningTrigger(req) => match req {
+                    MiningServerTrigger::Start => {
+                        debug!("Sv2ServerService received a MiningServerTrigger::Start request");
+                        this.mining_handler.start().await
+                    }
                     MiningServerTrigger::NewTemplate(new_template) => {
-                        debug!("Sv2ServerService received a NewTemplate message via external mining trigger");
+                        debug!(
+                            "Sv2ServerService received a MiningServerTrigger::NewTemplate request"
+                        );
                         this.mining_handler.on_new_template(new_template).await
                     }
                     MiningServerTrigger::SetNewPrevHash(set_new_prev_hash) => {
-                        debug!("Sv2ServerService received a SetNewPrevHash message via external mining trigger");
+                        debug!("Sv2ServerService received a MiningServerTrigger::SetNewPrevHash request");
                         this.mining_handler
                             .on_set_new_prev_hash(set_new_prev_hash)
                             .await

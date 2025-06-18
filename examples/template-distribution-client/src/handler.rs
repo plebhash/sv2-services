@@ -18,6 +18,10 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
         Poll::Ready(Ok(()))
     }
 
+    async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+        Ok(ResponseFromSv2Client::Ok)
+    }
+
     async fn shutdown(&mut self) {}
 
     async fn handle_new_template(

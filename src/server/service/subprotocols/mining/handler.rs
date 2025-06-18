@@ -16,6 +16,15 @@ use std::task::{Context, Poll};
 ///
 /// Removing a client on [`crate::server::service::Sv2ServerService`] also triggers removing the client on this handler.
 pub trait Sv2MiningServerHandler {
+    fn start(
+        &mut self,
+    ) -> impl std::future::Future<
+        Output = Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError>,
+    > + Send;
+
+    /// Should be used to kill any spawned tasks
+    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
+
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>>;
 
     fn setup_connection_success_flags(&self) -> u32;
@@ -27,9 +36,6 @@ pub trait Sv2MiningServerHandler {
     ) -> impl std::future::Future<Output = ()> + Send;
 
     fn remove_client(&mut self, client_id: u32) -> impl std::future::Future<Output = ()> + Send;
-
-    /// Should be used to kill any spawned tasks
-    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
 
     fn handle_open_standard_mining_channel(
         &self,
@@ -122,6 +128,15 @@ impl Sv2MiningServerHandler for NullSv2MiningServerHandler {
         unimplemented!("NullSv2MiningServerHandler does not implement poll_ready");
     }
 
+    async fn start(&mut self) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+        unimplemented!("NullSv2MiningServerHandler does not implement start");
+    }
+
+    /// Shutdown the subprotocol handler
+    async fn shutdown(&mut self) {
+        unimplemented!("NullSv2MiningServerHandler does not implement shutdown")
+    }
+
     /// The subprotocol flags to be used on SetupConnectionSuccess
     fn setup_connection_success_flags(&self) -> u32 {
         unimplemented!("NullSv2MiningServerHandler does not implement return_flags")
@@ -135,11 +150,6 @@ impl Sv2MiningServerHandler for NullSv2MiningServerHandler {
     /// Remove a client from the subprotocol handler
     async fn remove_client(&mut self, _client_id: u32) {
         unimplemented!("NullSv2MiningServerHandler does not implement remove_client")
-    }
-
-    /// Shutdown the subprotocol handler
-    async fn shutdown(&mut self) {
-        unimplemented!("NullSv2MiningServerHandler does not implement shutdown")
     }
 
     /// Handle an OpenStandardMiningChannel message

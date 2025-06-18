@@ -21,6 +21,10 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         Poll::Ready(Ok(()))
     }
 
+    async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+        Ok(ResponseFromSv2Client::Ok)
+    }
+
     /// Should be used to kill any spawned tasks
     async fn shutdown(&mut self) {}
 

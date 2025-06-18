@@ -8,6 +8,9 @@ pub enum Sv2ClientServiceError {
     NonNullHandlerForUnsupportedProtocol { protocol: Protocol },
     ServiceNotReady,
     FailedToInitiateConnection { protocol: Protocol },
+    FailedToStartMiningHandler,
+    // FailedToStartJobDeclarationHandler,
+    FailedToStartTemplateDistributionHandler,
 }
 
 impl fmt::Display for Sv2ClientServiceError {
@@ -25,6 +28,15 @@ impl fmt::Display for Sv2ClientServiceError {
             Sv2ClientServiceError::ServiceNotReady => write!(f, "Service not ready"),
             Sv2ClientServiceError::FailedToInitiateConnection { protocol } => {
                 write!(f, "Failed to initiate connection with {:?}", protocol)
+            }
+            Sv2ClientServiceError::FailedToStartMiningHandler => {
+                write!(f, "Failed to start mining handler")
+            }
+            // Sv2ClientServiceError::FailedToStartJobDeclarationHandler => {
+            //     write!(f, "Failed to start job declaration handler")
+            // }
+            Sv2ClientServiceError::FailedToStartTemplateDistributionHandler => {
+                write!(f, "Failed to start template distribution handler")
             }
         }
     }
