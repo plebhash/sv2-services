@@ -84,7 +84,7 @@ where
     /// The sibling server service is used to send and receive requests to a sibling [`crate::server::service::Sv2ServerService`] that pairs with this client.    
     ///
     /// Before calling this, you need to create a [`Sv2SiblingServerServiceIo`] using [`crate::server::service::Sv2ServerService::new_with_sibling_io`].
-    pub fn new_with_sibling_io(
+    pub fn new_from_sibling_io(
         config: Sv2ClientServiceConfig,
         mining_handler: M,
         // todo: add job_declaration_handler: J,
@@ -1971,7 +1971,7 @@ mod tests {
 
         // Create the Sv2ClientService and connect it to the server using the sibling IO.
 
-        let mut client_service = Sv2ClientService::new_with_sibling_io(
+        let mut client_service = Sv2ClientService::new_from_sibling_io(
             client_config.clone(),
             NullSv2MiningClientHandler,
             tdc_handler,

@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the client service that communicates with the server using the `sibling_server_io` created above.
     let client_config = config.client_config.clone();
-    let mut client_service = Sv2ClientService::new_with_sibling_io(
+    let mut client_service = Sv2ClientService::new_from_sibling_io(
         client_config,
         NullSv2MiningClientHandler,
         tdc_handler,
