@@ -87,6 +87,7 @@ where
     pub fn new_with_sibling_io(
         config: Sv2ClientServiceConfig,
         mining_handler: M,
+        // todo: add job_declaration_handler: J,
         template_distribution_handler: T,
         sibling_server_service_io: Sv2SiblingServerServiceIo,
     ) -> Result<Self, Sv2ClientServiceError> {
