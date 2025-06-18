@@ -23,7 +23,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::{broadcast, RwLock};
-use tower::Service;
+use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
 pub mod client;
@@ -262,6 +262,12 @@ where
                                 Ok(req) => {
                                     debug!("Received request from sibling client service");
 
+                                    // Check if service is ready before processing the request
+                                    if let Err(e) = service.ready().await.map_err(|_| Sv2ServerServiceError::ServiceNotReady) {
+                                        error!("Service not ready, skipping request: {:?}", e);
+                                        continue;
+                                    }
+
                                     // Call the service with the request
                                     if let Err(e) = service.call(*req).await {
                                         error!(
@@ -281,6 +287,9 @@ where
         }
 
         if !Self::has_null_handler(Protocol::MiningProtocol) {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ServerServiceError::ServiceNotReady)?;
             match self
                 .call(RequestToSv2Server::MiningTrigger(
                     MiningServerTrigger::Start,

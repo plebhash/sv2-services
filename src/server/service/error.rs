@@ -4,6 +4,8 @@ use std::fmt;
 /// Errors that can occur when working with the Sv2ServerService.
 #[derive(Debug)]
 pub enum Sv2ServerServiceError {
+    /// Occurs when the service is not ready.
+    ServiceNotReady,
     /// Occurs when a protocol is configured as supported but the corresponding handler is null.
     NullHandlerForSupportedProtocol {
         /// The protocol that was configured as supported but has a null handler.
@@ -32,6 +34,7 @@ pub enum Sv2ServerServiceError {
 impl fmt::Display for Sv2ServerServiceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Sv2ServerServiceError::ServiceNotReady => write!(f, "Service not ready"),
             Sv2ServerServiceError::NullHandlerForSupportedProtocol { protocol } => {
                 write!(
                     f,

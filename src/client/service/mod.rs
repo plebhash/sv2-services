@@ -194,11 +194,11 @@ where
     }
 
     pub async fn start(&mut self) -> Result<(), Sv2ClientServiceError> {
-        self.ready()
-            .await
-            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
-
         for (protocol, flags) in self.config.supported_protocols() {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
             let initiate_connection_response = self
                 .call(RequestToSv2Client::SetupConnectionTrigger(protocol, flags))
                 .await
@@ -230,6 +230,10 @@ where
         }
 
         if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
             match self
                 .call(RequestToSv2Client::MiningTrigger(
                     MiningClientTrigger::Start,
@@ -251,6 +255,10 @@ where
         if std::any::TypeId::of::<T>()
             != std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
         {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
             match self
                 .call(RequestToSv2Client::TemplateDistributionTrigger(
                     TemplateDistributionClientTrigger::Start,
@@ -465,26 +473,26 @@ where
     async fn listen_for_messages_via_tcp(
         &mut self,
         protocol: Protocol,
-    ) -> Result<(), RequestToSv2ClientError> {
+    ) -> Result<(), Sv2ClientServiceError> {
         if !self.is_connected(protocol).await {
-            return Err(RequestToSv2ClientError::IsNotConnected);
+            return Err(Sv2ClientServiceError::IsNotConnected);
         }
 
         let tcp_client: Sv2EncryptedTcpClient = match protocol {
             Protocol::MiningProtocol => match self.mining_tcp_client.read().await.as_ref() {
                 Some(client) => client.clone(),
-                None => return Err(RequestToSv2ClientError::IsNotConnected),
+                None => return Err(Sv2ClientServiceError::IsNotConnected),
             },
             Protocol::JobDeclarationProtocol => {
                 match self.job_declaration_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
-                    None => return Err(RequestToSv2ClientError::IsNotConnected),
+                    None => return Err(Sv2ClientServiceError::IsNotConnected),
                 }
             }
             Protocol::TemplateDistributionProtocol => {
                 match self.template_distribution_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
-                    None => return Err(RequestToSv2ClientError::IsNotConnected),
+                    None => return Err(Sv2ClientServiceError::IsNotConnected),
                 }
             }
         };
@@ -500,6 +508,10 @@ where
                 message_result = tcp_client.io.recv_message() => {
                     match message_result {
                         Ok(message) => {
+                            self.ready()
+                                .await
+                                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
                             if let Err(e) = self.call(RequestToSv2Client::IncomingMessage(message)).await {
                                 // this is a protection from attacks where a server sends a message that it knows the client cannot handle
                                 // we simply log the error and ignore the message, without shutting down the client
@@ -521,11 +533,11 @@ where
     // Listens for requests from the sibling server service and triggers Service Requests
     async fn listen_for_requests_via_sibling_server_service(
         &mut self,
-    ) -> Result<(), RequestToSv2ClientError> {
+    ) -> Result<(), Sv2ClientServiceError> {
         let sibling_server_service_io = self
             .sibling_server_service_io
             .as_ref()
-            .ok_or(RequestToSv2ClientError::NoSiblingServerServiceIo)?;
+            .ok_or(Sv2ClientServiceError::NoSiblingServerServiceIo)?;
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
@@ -541,6 +553,7 @@ where
                             debug!("Received request from sibling server service");
 
                             let mut service = self.clone();
+                            service.ready().await.map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
                             if let Err(e) = service.call(*req).await {
                                 error!("Error handling request from sibling server service: {:?}", e);
                             }
@@ -1657,6 +1670,7 @@ mod tests {
 
         let initiate_connection_request =
             RequestToSv2Client::SetupConnectionTrigger(Protocol::TemplateDistributionProtocol, 0);
+        sv2_client_service.ready().await.unwrap();
         let _initiate_connection_result =
             sv2_client_service.call(initiate_connection_request).await;
 
@@ -1968,6 +1982,8 @@ mod tests {
         server_service.start().await.unwrap();
         client_service.start().await.unwrap();
 
+        client_service.ready().await.unwrap();
+
         // Trigger the Template Provider to set coinbase output constraints.
         client_service
             .call(RequestToSv2Client::TemplateDistributionTrigger(
@@ -2221,6 +2237,8 @@ mod tests {
         let submit_solution_request = RequestToSv2Client::TemplateDistributionTrigger(
             TemplateDistributionClientTrigger::SubmitSolution(submit_solution),
         );
+
+        sv2_client_service.ready().await.unwrap();
 
         let response = sv2_client_service.call(submit_solution_request).await;
         assert!(matches!(response, Ok(ResponseFromSv2Client::Ok)));

@@ -3,6 +3,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum Sv2ClientServiceError {
+    IsNotConnected,
     BadConfig,
     NullHandlerForSupportedProtocol { protocol: Protocol },
     NonNullHandlerForUnsupportedProtocol { protocol: Protocol },
@@ -11,11 +12,13 @@ pub enum Sv2ClientServiceError {
     FailedToStartMiningHandler,
     // FailedToStartJobDeclarationHandler,
     FailedToStartTemplateDistributionHandler,
+    NoSiblingServerServiceIo,
 }
 
 impl fmt::Display for Sv2ClientServiceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Sv2ClientServiceError::IsNotConnected => write!(f, "Is not connected"),
             Sv2ClientServiceError::BadConfig => write!(f, "Bad config"),
             Sv2ClientServiceError::NullHandlerForSupportedProtocol { protocol } => {
                 write!(f, "Null handler for supported protocol {:?}", protocol)
@@ -37,6 +40,9 @@ impl fmt::Display for Sv2ClientServiceError {
             // }
             Sv2ClientServiceError::FailedToStartTemplateDistributionHandler => {
                 write!(f, "Failed to start template distribution handler")
+            }
+            Sv2ClientServiceError::NoSiblingServerServiceIo => {
+                write!(f, "No sibling server service io")
             }
         }
     }
