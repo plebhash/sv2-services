@@ -64,11 +64,49 @@ impl ExtendedMiner {
         self.extended_channel
             .on_new_extended_mining_job(new_extended_mining_job.clone());
 
-        // todo:
-        // if new job is non-future
-        // kill task of past job
-        // spawn task for new job
-        // we need extended_channel.get_chain_tip() method
+        // this is a non-future job
+        // we should start mining immediately
+        if let Some(_min_ntime) = new_extended_mining_job.min_ntime.into_inner() {
+            if self.is_mining {
+                // kill task of past job
+                if let Err(e) = self.shutdown_tx.send(()) {
+                    error!("Failed to send shutdown signal: {}", e);
+                }
+            }
+            // spawn task for new job
+            let (active_job, extranonce_prefix) = self
+                .extended_channel
+                .get_active_job()
+                .expect("channel must have active job")
+                .clone();
+            let chain_tip = self
+                .extended_channel
+                .get_chain_tip()
+                .expect("channel must have chain tip");
+            let prev_hash = u256_to_block_hash(chain_tip.prev_hash());
+            let nbits = chain_tip.nbits();
+
+            let channel_target = self.extended_channel.get_target().clone();
+            let request_injector = self.request_injector.clone();
+            let shutdown_rx = self.shutdown_tx.subscribe();
+            let last_share_sequence_number = self.last_share_sequence_number.clone();
+
+            tokio::spawn(async move {
+                mine_job(
+                    active_job,
+                    extranonce_prefix,
+                    prev_hash,
+                    nbits,
+                    channel_target,
+                    request_injector,
+                    last_share_sequence_number,
+                    shutdown_rx,
+                )
+                .await;
+            });
+
+            self.is_mining = true;
+        }
     }
 
     pub fn on_set_new_prev_hash(
