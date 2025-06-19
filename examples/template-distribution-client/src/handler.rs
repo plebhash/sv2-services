@@ -3,13 +3,28 @@ use roles_logic_sv2::template_distribution_sv2::{
     NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
 };
 use std::task::{Context, Poll};
+use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::request::RequestToSv2ClientError;
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
+use tower_stratum::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use tracing::info;
 #[derive(Debug, Clone, Default)]
 pub struct MyTemplateDistributionHandler {
-    // You could add fields here to store state or callbacks
+    coinbase_output_max_additional_size: u32,
+    coinbase_output_max_additional_sigops: u16,
+}
+
+impl MyTemplateDistributionHandler {
+    pub fn new(
+        coinbase_output_max_additional_size: u32,
+        coinbase_output_max_additional_sigops: u16,
+    ) -> Self {
+        Self {
+            coinbase_output_max_additional_size,
+            coinbase_output_max_additional_sigops,
+        }
+    }
 }
 
 /// Implement the Sv2TemplateDistributionClientHandler trait for MyTemplateDistributionClient
@@ -19,7 +34,14 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
     }
 
     async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(ResponseFromSv2Client::TriggerNewRequest(Box::new(
+            RequestToSv2Client::TemplateDistributionTrigger(
+                TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
+                    self.coinbase_output_max_additional_size,
+                    self.coinbase_output_max_additional_sigops,
+                ),
+            ),
+        )))
     }
 
     async fn shutdown(&mut self) {}

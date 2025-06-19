@@ -4,12 +4,10 @@ use mining_server_handler::MyMiningServerHandler;
 use template_distribution_handler::MyTemplateDistributionHandler;
 use tower_stratum::{
     client::service::{
-        Sv2ClientService, request::RequestToSv2Client,
+        Sv2ClientService,
         subprotocols::mining::handler::NullSv2MiningClientHandler,
-        subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger,
     },
     server::service::Sv2ServerService,
-    tower::Service,
 };
 use tracing::info;
 mod configs;
@@ -49,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
     info!("Template Provider address: {:?}", tp_address);
 
     // Initialize the handlers for TemplateDistribution and MiningServer.
-    let tdc_handler = MyTemplateDistributionHandler::default();
+    let tdc_handler = MyTemplateDistributionHandler::new(
+        config.client_config.template_distribution_config.as_ref().unwrap().coinbase_output_constraints.0,
+        config.client_config.template_distribution_config.as_ref().unwrap().coinbase_output_constraints.1,
+    );
     let mining_handler = MyMiningServerHandler::default();
 
     // Create the Sv2ServerService and Sv2ClientService using the handlers.
@@ -73,30 +74,6 @@ async fn main() -> anyhow::Result<()> {
     // Start the server and client services.
     server_service.start().await?;
     client_service.start().await?;
-
-    // Once the connection is established, set the coinbase constraints with the Template Provider.
-    // This step is necessary to start receiving new templates.
-    client_service
-        .call(RequestToSv2Client::TemplateDistributionTrigger(
-            TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
-                config
-                    .client_config
-                    .template_distribution_config
-                    .as_ref()
-                    .unwrap()
-                    .coinbase_output_constraints
-                    .0,
-                config
-                    .client_config
-                    .template_distribution_config
-                    .as_ref()
-                    .unwrap()
-                    .coinbase_output_constraints
-                    .1,
-            ),
-        ))
-        .await
-        .unwrap();
 
     // At this point, the client starts receiving new templates from the Template Provider.
     // These templates are sent to the MiningServer via SiblingIO.
