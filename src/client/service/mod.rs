@@ -10,6 +10,7 @@ use crate::client::service::subprotocols::template_distribution::handler::NullSv
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
+use async_channel::Receiver;
 use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
 use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
 use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
@@ -58,6 +59,7 @@ where
     template_distribution_handler: T,
     shutdown_tx: broadcast::Sender<()>,
     sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
+    request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
 }
 
 impl<M, T> Sv2ClientService<M, T>
@@ -74,8 +76,37 @@ where
         template_distribution_handler: T,
         // todo: add job_declaration_handler: J,
     ) -> Result<Self, Sv2ClientServiceError> {
-        let sv2_client_service =
-            Self::_new(config, mining_handler, template_distribution_handler, None)?;
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            None,
+            None,
+        )?;
+        Ok(sv2_client_service)
+    }
+
+    /// Creates a new [`Sv2ClientService`] with a request injector.
+    ///
+    /// The request injector is used to inject requests into the client service.
+    ///
+    /// Can be used for example for handler functions that are not defined in the handler trait
+    /// (and therefore cannot leverage `ResponseFromSv2Client::TriggerNewRequest`) but still need to send requests to the server.
+    ///
+    /// Before calling this, you need to create a [`Receiver`] using [`async_channel::channel`].
+    pub fn new_with_request_injector(
+        config: Sv2ClientServiceConfig,
+        mining_handler: M,
+        template_distribution_handler: T,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+    ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            None,
+            Some(request_rx),
+        )?;
         Ok(sv2_client_service)
     }
 
@@ -96,6 +127,25 @@ where
             mining_handler,
             template_distribution_handler,
             Some(sibling_server_service_io),
+            None,
+        )?;
+        Ok(sv2_client_service)
+    }
+
+    pub fn new_from_sibling_io_with_request_injector(
+        config: Sv2ClientServiceConfig,
+        mining_handler: M,
+        // todo: add job_declaration_handler: J,
+        template_distribution_handler: T,
+        sibling_server_service_io: Sv2SiblingServerServiceIo,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+    ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            Some(sibling_server_service_io),
+            Some(request_rx),
         )?;
         Ok(sv2_client_service)
     }
@@ -107,6 +157,7 @@ where
         // todo: add job_declaration_handler: J,
         template_distribution_handler: T,
         sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
+        request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
     ) -> Result<Self, Sv2ClientServiceError> {
         Self::validate_protocol_handlers(&config)?;
 
@@ -119,6 +170,7 @@ where
             template_distribution_handler,
             shutdown_tx: broadcast::channel(1).0,
             sibling_server_service_io,
+            request_injector,
         };
 
         Ok(sv2_client_service)
@@ -219,15 +271,27 @@ where
                     error!("Error listening for messages: {:?}", e);
                 }
             });
+        }
 
-            let mut this = self.clone();
-            if let Some(_sibling_server_service_io) = &mut this.sibling_server_service_io {
-                tokio::spawn(async move {
-                    if let Err(e) = this.listen_for_requests_via_sibling_server_service().await {
-                        error!("Error listening for requests: {:?}", e);
-                    }
-                });
-            }
+        let mut this = self.clone();
+        if let Some(_sibling_server_service_io) = this.sibling_server_service_io.clone() {
+            tokio::spawn(async move {
+                if let Err(e) = this.listen_for_requests_via_sibling_server_service().await {
+                    error!("Error listening for requests: {:?}", e);
+                }
+            });
+        }
+
+        let mut this = self.clone();
+        if let Some(request_injector) = this.request_injector.clone() {
+            tokio::spawn(async move {
+                if let Err(e) = this
+                    .listen_for_requests_via_request_injector(request_injector)
+                    .await
+                {
+                    error!("Error listening for requests: {:?}", e);
+                }
+            });
         }
 
         if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
@@ -561,6 +625,41 @@ where
                         }
                         Err(e) => {
                             error!("Failed to receive request from sibling server service: {:?}", e);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Listens for requests from the request injector and triggers Service Requests
+    async fn listen_for_requests_via_request_injector(
+        &mut self,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+    ) -> Result<(), Sv2ClientServiceError> {
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        loop {
+            tokio::select! {
+                _ = shutdown_rx.recv() => {
+                    debug!("Request injector request listener received shutdown signal");
+                    break;
+                }
+                result = request_rx.recv() => {
+                    match result {
+                        Ok(req) => {
+                            debug!("Received request from request injector");
+                            let mut service = self.clone();
+                            service.ready().await.map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+                            if let Err(e) = service.call(req).await {
+                                error!("Error handling request from request injector: {:?}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to receive request from request injector: {:?}", e);
+                            break;
                         }
                     }
                 }
@@ -1212,9 +1311,11 @@ mod tests {
         SetNewPrevHash as SetNewPrevHashMining, SetTarget, SubmitSharesError, SubmitSharesSuccess,
         UpdateChannelError,
     };
-    use roles_logic_sv2::template_distribution_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
     use roles_logic_sv2::template_distribution_sv2::{
         NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
+    };
+    use roles_logic_sv2::template_distribution_sv2::{
+        MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
     };
     use std::net::IpAddr;
     use std::net::Ipv4Addr;
@@ -1890,6 +1991,74 @@ mod tests {
                 .is_connected(Protocol::TemplateDistributionProtocol)
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn test_request_injector() {
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+
+        // Start a sniffer to intercept messages between the client and the Template Provider.
+        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_addr, false, vec![]);
+
+        // Allow some time for the sniffer to initialize.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
+            coinbase_output_constraints: (1, 1),
+            server_addr: tp_sniffer_addr,
+            auth_pk: None,
+            setup_connection_flags: 0,
+        };
+
+        let sv2_client_service_config = Sv2ClientServiceConfig {
+            min_supported_version: 2,
+            max_supported_version: 2,
+            endpoint_host: Some("localhost".to_string()),
+            endpoint_port: Some(8080),
+            vendor: Some("test".to_string()),
+            hardware_version: Some("test".to_string()),
+            firmware: Some("test".to_string()),
+            device_id: Some("test".to_string()),
+            mining_config: None,
+            job_declaration_config: None,
+            template_distribution_config: Some(template_distribution_config),
+        };
+
+        let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
+
+        let mut sv2_client_service = Sv2ClientService::new_with_request_injector(
+            sv2_client_service_config,
+            NullSv2MiningClientHandler,
+            DummyTemplateDistributionClientHandler,
+            rx,
+        )
+        .unwrap();
+
+        sv2_client_service.start().await.unwrap();
+
+        assert!(
+            sv2_client_service
+                .is_connected(Protocol::TemplateDistributionProtocol)
+                .await
+        );
+
+        // Send a request to the client service via the request injector.
+        tx.send(RequestToSv2Client::TemplateDistributionTrigger(
+            TemplateDistributionClientTrigger::TransactionDataNeeded(0),
+        ))
+        .await
+        .unwrap();
+
+        // Wait for the sniffer to detect the transaction data needed message.
+        tp_sniffer
+            .wait_for_message_type(
+                MessageDirection::ToUpstream,
+                MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
+            )
+            .await;
+
+        // Shutdown the client
+        sv2_client_service.shutdown().await;
     }
 
     #[tokio::test]
