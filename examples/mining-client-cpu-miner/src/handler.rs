@@ -1,3 +1,4 @@
+use crate::client::format_number_with_underscores;
 use roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
@@ -14,28 +15,45 @@ use tower_stratum::client::service::subprotocols::mining::trigger::MiningClientT
 use tower_stratum::roles_logic_sv2::channels::client::extended::ExtendedChannel;
 use tower_stratum::roles_logic_sv2::channels::client::standard::StandardChannel;
 
+use crate::miner::extended::ExtendedMiner;
+use crate::miner::standard::StandardMiner;
+
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use tracing::{debug, error, info};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 pub struct MyMiningClientHandler {
     user_identity: String,
-    extended_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<ExtendedChannel<'static>>>>>>,
-    standard_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<StandardChannel<'static>>>>>>,
+    nominal_hashrate: f32,
+    n_extended_channels: u8,
+    n_standard_channels: u8,
+    extended_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<ExtendedMiner>>>>>,
+    standard_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<StandardMiner>>>>>,
+    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
 }
 
 impl MyMiningClientHandler {
-    pub fn new(user_identity: String, n_extended_channels: u8, n_standard_channels: u8) -> Self {
+    pub fn new(
+        user_identity: String,
+        nominal_hashrate: f32,
+        n_extended_channels: u8,
+        n_standard_channels: u8,
+        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    ) -> Self {
         Self {
             user_identity,
+            nominal_hashrate,
+            n_extended_channels,
+            n_standard_channels,
             extended_channels: Arc::new(RwLock::new(HashMap::with_capacity(
                 n_extended_channels as usize,
             ))),
             standard_channels: Arc::new(RwLock::new(HashMap::with_capacity(
                 n_standard_channels as usize,
             ))),
+            request_injector,
         }
     }
 }
@@ -48,28 +66,36 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         let mut requests = Vec::new();
 
-        let n_standard_channels = self.standard_channels.read().await.capacity();
-        let n_extended_channels = self.extended_channels.read().await.capacity();
+        let nominal_hashrate_per_channel =
+            self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32;
 
-        for i in 1..n_standard_channels {
+        for i in 0..self.n_standard_channels {
+            info!(
+                "Sending OpenStandardMiningChannel with nominal hashrate: {} H/s",
+                format_number_with_underscores(nominal_hashrate_per_channel as u64)
+            );
             requests.push(RequestToSv2Client::MiningTrigger(
                 MiningClientTrigger::OpenStandardMiningChannel(
                     i as u32,
                     self.user_identity.clone(),
-                    10.0,              // todo
+                    nominal_hashrate_per_channel,
                     vec![0xFF_u8; 32], // allow maximum possible target
                 ),
             ));
         }
 
-        for i in 1..n_extended_channels {
+        for i in 0..self.n_extended_channels {
+            info!(
+                "Sending OpenExtendedMiningChannel with nominal hashrate: {} H/s",
+                format_number_with_underscores(nominal_hashrate_per_channel as u64)
+            );
             requests.push(RequestToSv2Client::MiningTrigger(
                 MiningClientTrigger::OpenExtendedMiningChannel(
-                    (i + n_standard_channels) as u32,
+                    (i + self.n_standard_channels) as u32,
                     self.user_identity.clone(),
-                    10.0,              // todo
+                    nominal_hashrate_per_channel,
                     vec![0xFF_u8; 32], // allow maximum possible target
-                    4,                 // ask for 4 rollable extranonce bytes
+                    0, // no extranonce rolling to avoid merkle root calculation overhead
                 ),
             ));
         }
@@ -79,7 +105,15 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     }
 
     /// Should be used to kill any spawned tasks
-    async fn shutdown(&mut self) {}
+    async fn shutdown(&mut self) {
+        for (_, standard_channel) in self.standard_channels.read().await.iter() {
+            standard_channel.write().await.shutdown();
+        }
+
+        for (_, extended_channel) in self.extended_channels.read().await.iter() {
+            extended_channel.write().await.shutdown();
+        }
+    }
 
     async fn handle_open_standard_mining_channel_success(
         &mut self,
@@ -97,14 +131,17 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .extranonce_prefix
                 .to_vec(),
             open_standard_mining_channel_success.target.into(),
-            10.0, // todo
+            self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32,
         );
 
         let mut standard_channels = self.standard_channels.write().await;
 
         standard_channels.insert(
             open_standard_mining_channel_success.channel_id,
-            Arc::new(RwLock::new(standard_channel.clone())),
+            Arc::new(RwLock::new(StandardMiner::new(
+                standard_channel.clone(),
+                self.request_injector.clone(),
+            ))),
         );
 
         debug!("Created new Standard Channel: {:?}", standard_channel);
@@ -128,7 +165,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .extranonce_prefix
                 .to_vec(),
             open_extended_mining_channel_success.target.into(),
-            10.0, // todo
+            self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32,
             true,
             open_extended_mining_channel_success.extranonce_size,
         );
@@ -137,7 +174,10 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
 
         extended_channels.insert(
             open_extended_mining_channel_success.channel_id,
-            Arc::new(RwLock::new(extended_channel.clone())),
+            Arc::new(RwLock::new(ExtendedMiner::new(
+                extended_channel.clone(),
+                self.request_injector.clone(),
+            ))),
         );
 
         debug!("Created new Extended Channel: {:?}", extended_channel);
@@ -318,8 +358,6 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 "NewMiningJob processed: Standard Channel ID: {:?}, Job ID: {:?}",
                 new_mining_job.channel_id, new_mining_job.job_id
             );
-
-            // todo: start hashing
         }
 
         Ok(ResponseFromSv2Client::Ok)
