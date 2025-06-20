@@ -29,7 +29,7 @@ impl MyMiningClient {
             vendor: None,
             hardware_version: None,
             firmware: None,
-            device_id: None,
+            device_id: Some(config.device_id),
             mining_config: Some(Sv2ClientServiceMiningConfig {
                 server_addr: config.server_addr,
                 auth_pk: config.auth_pk,

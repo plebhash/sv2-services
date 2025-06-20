@@ -11,6 +11,7 @@ pub struct MyMiningClientConfig {
     pub n_extended_channels: u8,
     pub n_standard_channels: u8,
     pub user_identity: String,
+    pub device_id: String,
 }
 
 impl MyMiningClientConfig {

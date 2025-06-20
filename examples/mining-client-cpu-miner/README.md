@@ -12,6 +12,7 @@ The `config` module is reponsible for parsing a `.toml` file with the following 
 - `n_standard_channels`: the number of Standard Channels to open with the Sv2 Mining Server
 - `n_extended_channels`: the number of Extended Channels to open with the Sv2 Mining Server
 - `user_identity`: string to be used on channel opening
+- `device_id`: string to be used on connection
 
 # `client` module
 
