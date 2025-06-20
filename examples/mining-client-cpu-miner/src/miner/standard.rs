@@ -62,6 +62,7 @@ impl StandardMiner {
             if self.is_mining {
                 // trigger miner cancellation token to kill task of past job
                 self.miner_cancellation_token.cancel();
+                self.miner_cancellation_token = CancellationToken::new();
             }
 
             let request_injector = self.request_injector.clone();
@@ -95,6 +96,7 @@ impl StandardMiner {
         if self.is_mining {
             // trigger miner cancellation token to kill task of past job
             self.miner_cancellation_token.cancel();
+            self.miner_cancellation_token = CancellationToken::new();
         }
 
         // Extract needed values from self before spawning
