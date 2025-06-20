@@ -20,7 +20,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt::init();
 
     // Parse command line arguments
     let args = Args::parse();
