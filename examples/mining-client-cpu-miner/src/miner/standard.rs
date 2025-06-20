@@ -13,7 +13,7 @@ use bitcoin::{
 };
 
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, error, info};
 
 pub struct StandardMiner {
@@ -21,7 +21,6 @@ pub struct StandardMiner {
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
     shutdown_tx: broadcast::Sender<()>,
     is_mining: bool,
-    last_share_sequence_number: Arc<Mutex<u32>>,
 }
 
 impl StandardMiner {
@@ -34,7 +33,6 @@ impl StandardMiner {
             request_injector,
             shutdown_tx: broadcast::channel(1).0,
             is_mining: false,
-            last_share_sequence_number: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -73,18 +71,11 @@ impl StandardMiner {
 
             let request_injector = self.request_injector.clone();
             let shutdown_rx = self.shutdown_tx.subscribe();
-            let last_share_sequence_number = self.last_share_sequence_number.clone();
 
             let standard_channel = self.standard_channel.clone();
 
             tokio::spawn(async move {
-                mine_job(
-                    standard_channel,
-                    request_injector,
-                    last_share_sequence_number,
-                    shutdown_rx,
-                )
-                .await;
+                mine_job(standard_channel, request_injector, shutdown_rx).await;
             });
 
             self.is_mining = true;
@@ -109,18 +100,11 @@ impl StandardMiner {
         // Extract needed values from self before spawning
         let request_injector = self.request_injector.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
-        let last_share_sequence_number = self.last_share_sequence_number.clone();
 
         let standard_channel = self.standard_channel.clone();
 
         tokio::spawn(async move {
-            mine_job(
-                standard_channel,
-                request_injector,
-                last_share_sequence_number,
-                shutdown_rx,
-            )
-            .await;
+            mine_job(standard_channel, request_injector, shutdown_rx).await;
         });
 
         self.is_mining = true;
@@ -137,7 +121,6 @@ impl StandardMiner {
 async fn mine_job(
     standard_channel: Arc<RwLock<StandardChannel<'static>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
-    last_share_sequence_number: Arc<Mutex<u32>>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) {
     let standard_channel_guard = standard_channel.read().await;
@@ -188,33 +171,37 @@ async fn mine_job(
                     nonce,
                 };
 
-                // convert the header hash to a target type for easy comparison
+                // mine the header
                 let hash = header.block_hash();
+
+                // convert the header hash to a target type for easy comparison
                 let raw_hash: [u8; 32] = *hash.to_raw_hash().as_ref();
                 let hash_as_target: Target = raw_hash.into();
 
                 // is share valid?
                 if hash_as_target <= channel_target {
-                    let mut last_share_sequence_number = last_share_sequence_number.lock().await;
+                    // log share on channel state
+                    let mut standard_channel_guard = standard_channel.write().await;
+
+                    let share_accounting = standard_channel_guard.get_share_accounting();
+                    let sequence_number = share_accounting.get_last_share_sequence_number() + 1;
 
                     let share = SubmitSharesStandard {
                         channel_id: channel_id,
-                        sequence_number: *last_share_sequence_number,
+                        sequence_number,
                         job_id: active_job.job_id,
                         nonce,
                         ntime,
                         version: active_job.version,
                     };
 
-                    // log share on channel state
-                    let mut standard_channel_guard = standard_channel.write().await;
+
                     let _ = standard_channel_guard.validate_share(share.clone());
                     drop(standard_channel_guard);
 
                     match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
                         Ok(_) => {
                             info!("Submitting share: {:?}", share);
-                            *last_share_sequence_number += 1;
                         }
                         Err(e) => {
                             error!("Failed to send share: {}", e);
