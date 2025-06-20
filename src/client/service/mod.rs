@@ -377,6 +377,17 @@ where
             *template_distribution_guard = None;
         }
 
+        if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
+            self.mining_handler.shutdown().await;
+        }
+
+        // todo: shutdown job declaration handler
+
+        if std::any::TypeId::of::<T>()
+            != std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+        {
+            self.template_distribution_handler.shutdown().await;
+        }
         debug!("Sv2ClientService shutdown complete");
     }
 
@@ -584,7 +595,8 @@ where
                             }
                         }
                         Err(_) => {
-                            debug!("Message listener channel closed");
+                            error!("Message listener channel closed");
+                            self.shutdown().await;
                             break;
                         }
                     }
@@ -644,7 +656,7 @@ where
         loop {
             tokio::select! {
                 _ = shutdown_rx.recv() => {
-                    debug!("Request injector request listener received shutdown signal");
+                    debug!("Request injector listener received shutdown signal");
                     break;
                 }
                 result = request_rx.recv() => {
