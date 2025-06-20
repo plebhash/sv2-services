@@ -126,6 +126,7 @@ let (server, sibling_io) = Sv2ServerService::new_with_sibling_io(
     server_m_handler,
     server_jd_handler,
     server_td_handler,
+    cancellation_token,
 )?;
 
 // Create a client service using the sibling_io
@@ -135,6 +136,7 @@ let client = Sv2ClientService::new_from_sibling_io(
     client_jd_handler,
     client_td_handler,
     sibling_io, // <- use sibling_io to construct client service
+    cancellation_token
 )?;
 ```
 

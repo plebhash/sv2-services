@@ -19,9 +19,6 @@ pub trait Sv2TemplateDistributionClientHandler {
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
-    /// Should be used to kill any spawned tasks
-    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
-
     fn handle_new_template(
         &self,
         template: NewTemplate<'static>,
@@ -119,10 +116,6 @@ impl Sv2TemplateDistributionClientHandler for NullSv2TemplateDistributionClientH
 
     async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2TemplateDistributionClientHandler does not implement start");
-    }
-
-    async fn shutdown(&mut self) {
-        unimplemented!("NullSv2TemplateDistributionClientHandler does not implement shutdown");
     }
 
     async fn handle_new_template(

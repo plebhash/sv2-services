@@ -5,8 +5,8 @@ use network_helpers_sv2::noise_connection::Connection;
 use roles_logic_sv2::parsers::AnyMessage;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 /// A function that creates a TCP server that listens for clients under Sv2 noise encryption.
 ///
@@ -17,19 +17,17 @@ pub async fn start_encrypted_tcp_server(
     priv_key: Secp256k1SecretKey,
     cert_validity: u64,
     new_client_tx: mpsc::Sender<Sv2MessageIo>,
-    shutdown_rx: broadcast::Receiver<()>,
+    cancellation_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(listen_address).await?;
     tracing::debug!("Server bound to {}", listen_address);
-
-    let mut shutdown_rx = shutdown_rx.resubscribe();
 
     // spawn a task to accept incoming connections
     tokio::spawn(async move {
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    tracing::debug!("Encrypted TCP server received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    tracing::debug!("Encrypted TCP server task cancelled");
                     break;
                 }
                 Ok((stream, addr)) = listener.accept() => {
@@ -88,8 +86,8 @@ mod tests {
         net::{SocketAddr, TcpListener},
         sync::Mutex,
     };
-    use tokio::sync::broadcast;
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
 
     // prevents get_available_port from ever returning the same port twice
     static UNIQUE_PORTS: Lazy<Mutex<HashSet<u16>>> = Lazy::new(|| Mutex::new(HashSet::new()));
@@ -126,7 +124,7 @@ mod tests {
         // Create channel for new client connections
         let (new_client_tx, mut new_client_rx) = mpsc::channel(32);
 
-        let (_shutdown_tx, shutdown_rx) = broadcast::channel(1);
+        let cancellation_token = CancellationToken::new();
 
         // Create server
         super::start_encrypted_tcp_server(
@@ -135,7 +133,7 @@ mod tests {
             priv_key,
             10000,
             new_client_tx,
-            shutdown_rx,
+            cancellation_token,
         )
         .await
         .expect("Server should start successfully");

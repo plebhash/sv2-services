@@ -1,6 +1,7 @@
 use crate::config::MyTemplateDistributionClientConfig;
 use crate::handler::MyTemplateDistributionHandler;
 use anyhow::{Result, anyhow};
+use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 use tower_stratum::client::service::Sv2ClientService;
 use tower_stratum::client::service::config::Sv2ClientServiceConfig;
@@ -10,6 +11,7 @@ use tracing::info;
 
 pub struct MyTemplateDistributionClient {
     sv2_client_service: Sv2ClientService<NullSv2MiningClientHandler, MyTemplateDistributionHandler>,
+    cancellation_token: CancellationToken,
 }
 
 impl MyTemplateDistributionClient {
@@ -42,15 +44,21 @@ impl MyTemplateDistributionClient {
             config.coinbase_output_max_additional_sigops,
         );
 
+        let cancellation_token = CancellationToken::new();
+
         // Initialize the service with config and handler
         let sv2_client_service = Sv2ClientService::new(
             service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
 
-        Ok(Self { sv2_client_service })
+        Ok(Self {
+            sv2_client_service,
+            cancellation_token,
+        })
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -69,6 +77,6 @@ impl MyTemplateDistributionClient {
 
     pub async fn shutdown(&mut self) {
         info!("Shutting down Template Distribution Client");
-        self.sv2_client_service.shutdown().await;
+        self.cancellation_token.cancel();
     }
 }

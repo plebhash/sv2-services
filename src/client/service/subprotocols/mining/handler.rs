@@ -20,9 +20,6 @@ pub trait Sv2MiningClientHandler {
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
-    /// Should be used to kill any spawned tasks
-    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
-
     fn handle_open_standard_mining_channel_success(
         &mut self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
@@ -147,10 +144,6 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
 
     async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement start");
-    }
-
-    async fn shutdown(&mut self) {
-        unimplemented!("NullSv2MiningClientHandler does not implement shutdown");
     }
 
     async fn handle_open_standard_mining_channel_success(

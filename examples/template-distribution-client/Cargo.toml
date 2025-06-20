@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 tower-stratum = { path = "../.." }
 tokio = { version = "1", features = ["full", "tracing", "signal"] }
+tokio-util = "0.7.15"
 tracing = "0.1"
 tracing-subscriber = "0.3.19"
 tower = { version = "0.4", features = ["util"] }

@@ -18,7 +18,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
@@ -57,7 +58,7 @@ where
     mining_handler: M,
     // todo: add job_declaration_handler: J,
     template_distribution_handler: T,
-    shutdown_tx: broadcast::Sender<()>,
+    cancellation_token: CancellationToken,
     sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
     request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
 }
@@ -75,6 +76,7 @@ where
         mining_handler: M,
         template_distribution_handler: T,
         // todo: add job_declaration_handler: J,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         let sv2_client_service = Self::_new(
             config,
@@ -82,6 +84,7 @@ where
             template_distribution_handler,
             None,
             None,
+            cancellation_token,
         )?;
         Ok(sv2_client_service)
     }
@@ -99,6 +102,7 @@ where
         mining_handler: M,
         template_distribution_handler: T,
         request_rx: Receiver<RequestToSv2Client<'static>>,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         let sv2_client_service = Self::_new(
             config,
@@ -106,6 +110,7 @@ where
             template_distribution_handler,
             None,
             Some(request_rx),
+            cancellation_token,
         )?;
         Ok(sv2_client_service)
     }
@@ -121,6 +126,7 @@ where
         // todo: add job_declaration_handler: J,
         template_distribution_handler: T,
         sibling_server_service_io: Sv2SiblingServerServiceIo,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         let sv2_client_service = Self::_new(
             config,
@@ -128,6 +134,7 @@ where
             template_distribution_handler,
             Some(sibling_server_service_io),
             None,
+            cancellation_token,
         )?;
         Ok(sv2_client_service)
     }
@@ -139,6 +146,7 @@ where
         template_distribution_handler: T,
         sibling_server_service_io: Sv2SiblingServerServiceIo,
         request_rx: Receiver<RequestToSv2Client<'static>>,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         let sv2_client_service = Self::_new(
             config,
@@ -146,6 +154,7 @@ where
             template_distribution_handler,
             Some(sibling_server_service_io),
             Some(request_rx),
+            cancellation_token,
         )?;
         Ok(sv2_client_service)
     }
@@ -158,6 +167,7 @@ where
         template_distribution_handler: T,
         sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
         request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         Self::validate_protocol_handlers(&config)?;
 
@@ -168,7 +178,7 @@ where
             template_distribution_tcp_client: Arc::new(RwLock::new(None)),
             mining_handler,
             template_distribution_handler,
-            shutdown_tx: broadcast::channel(1).0,
+            cancellation_token,
             sibling_server_service_io,
             request_injector,
         };
@@ -341,54 +351,6 @@ where
         }
 
         Ok(())
-    }
-
-    /// Shuts down the client service
-    pub async fn shutdown(&mut self) {
-        debug!("Initiating shutdown of Sv2ClientService");
-
-        // Send shutdown signal to all tasks
-        if let Err(e) = self.shutdown_tx.send(()) {
-            error!("Failed to send shutdown signal: {}", e);
-        }
-
-        {
-            let mut mining_guard = self.mining_tcp_client.write().await;
-            if let Some(client) = &*mining_guard {
-                client.shutdown();
-            }
-            *mining_guard = None;
-        }
-
-        {
-            let mut job_declaration_guard = self.job_declaration_tcp_client.write().await;
-            if let Some(client) = &*job_declaration_guard {
-                client.shutdown();
-            }
-            *job_declaration_guard = None;
-        }
-
-        {
-            let mut template_distribution_guard =
-                self.template_distribution_tcp_client.write().await;
-            if let Some(client) = &*template_distribution_guard {
-                client.shutdown();
-            }
-            *template_distribution_guard = None;
-        }
-
-        if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
-            self.mining_handler.shutdown().await;
-        }
-
-        // todo: shutdown job declaration handler
-
-        if std::any::TypeId::of::<T>()
-            != std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
-        {
-            self.template_distribution_handler.shutdown().await;
-        }
-        debug!("Sv2ClientService shutdown complete");
     }
 
     async fn initiate_connection(
@@ -573,12 +535,13 @@ where
             }
         };
 
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    debug!("Message listener received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    debug!("Message listener task cancelled");
+                    tcp_client.shutdown();
                     break;
                 }
                 message_result = tcp_client.io.recv_message() => {
@@ -596,11 +559,24 @@ where
                         }
                         Err(_) => {
                             error!("Message listener channel closed");
-                            self.shutdown().await;
+                            tcp_client.shutdown();
                             break;
                         }
                     }
                 }
+            }
+        }
+
+        // if the loop was cancelled, we need to remove the tcp client from the map
+        match protocol {
+            Protocol::MiningProtocol => {
+                self.mining_tcp_client.write().await.take();
+            }
+            Protocol::JobDeclarationProtocol => {
+                self.job_declaration_tcp_client.write().await.take();
+            }
+            Protocol::TemplateDistributionProtocol => {
+                self.template_distribution_tcp_client.write().await.take();
             }
         }
 
@@ -616,12 +592,12 @@ where
             .as_ref()
             .ok_or(Sv2ClientServiceError::NoSiblingServerServiceIo)?;
 
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    debug!("Sibling server service request listener received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    debug!("Sibling server service request listener task cancelled");
                     break;
                 }
                 result = sibling_server_service_io.recv() => {
@@ -651,12 +627,12 @@ where
         &mut self,
         request_rx: Receiver<RequestToSv2Client<'static>>,
     ) -> Result<(), Sv2ClientServiceError> {
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    debug!("Request injector listener received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    debug!("Request injector listener task cancelled");
                     break;
                 }
                 result = request_rx.recv() => {
@@ -1335,6 +1311,7 @@ mod tests {
     use std::str::FromStr;
     use std::task::{Context, Poll};
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
     use tower::{Service, ServiceExt};
 
     // A dummy mining handler that is not null, but not actually handling anything
@@ -1354,8 +1331,6 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
-
-        async fn shutdown(&mut self) {}
 
         async fn handle_open_standard_mining_channel_success(
             &mut self,
@@ -1481,8 +1456,6 @@ mod tests {
             Ok(ResponseFromSv2Client::Ok)
         }
 
-        async fn shutdown(&mut self) {}
-
         async fn handle_new_template(
             &self,
             _template: NewTemplate<'_>,
@@ -1529,8 +1502,6 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
-
-        async fn shutdown(&mut self) {}
 
         async fn handle_new_template(
             &self,
@@ -1701,10 +1672,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         )
         .unwrap();
 
@@ -1767,10 +1741,13 @@ mod tests {
 
         let mining_handler = DummyMiningClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             mining_handler,
             NullSv2TemplateDistributionClientHandler,
+            cancellation_token,
         )
         .unwrap();
 
@@ -1828,10 +1805,13 @@ mod tests {
         // add a dummy template distribution handler to (which is not null)
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let result = Sv2ClientService::new(
             config,
             NullSv2MiningClientHandler,
             template_distribution_handler.clone(),
+            cancellation_token,
         );
 
         // we expect an error, because the template distribution config is None
@@ -1866,10 +1846,13 @@ mod tests {
         // but now we are using a null template distribution handler, which is also not allowed
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let result = Sv2ClientService::new(
             config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         );
         assert!(result.is_err());
     }
@@ -1901,10 +1884,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
-        let mut sv2_client_service = Sv2ClientService::new(
+        let cancellation_token = CancellationToken::new();
+
+        let sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -1916,7 +1902,7 @@ mod tests {
         );
 
         // Shutdown should work even when not connected
-        sv2_client_service.shutdown().await;
+        cancellation_token.cancel();
 
         // Verify final state
         assert!(
@@ -1955,10 +1941,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             mining_handler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -1992,7 +1981,7 @@ mod tests {
         );
 
         // Shutdown the client
-        sv2_client_service.shutdown().await;
+        cancellation_token.cancel();
 
         // Wait for listener to exit
         rx.recv().await.unwrap();
@@ -2038,11 +2027,14 @@ mod tests {
 
         let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new_with_request_injector(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             DummyTemplateDistributionClientHandler,
             rx,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -2070,7 +2062,7 @@ mod tests {
             .await;
 
         // Shutdown the client
-        sv2_client_service.shutdown().await;
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
@@ -2144,11 +2136,18 @@ mod tests {
         let tdc_handler = SiblingIoTemplateDistributionClientHandler;
         let mining_server_handler = DummyMiningServerHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         // Create the Sv2ServerService and its sibling IO for communication with the client.
         let (
             mut server_service,
             sibling_server_io, // SiblingIO is created here.
-        ) = Sv2ServerService::new_with_sibling_io(server_config, mining_server_handler).unwrap();
+        ) = Sv2ServerService::new_with_sibling_io(
+            server_config,
+            mining_server_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
 
         // Create the Sv2ClientService and connect it to the server using the sibling IO.
 
@@ -2157,6 +2156,7 @@ mod tests {
             NullSv2MiningClientHandler,
             tdc_handler,
             sibling_server_io,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -2240,8 +2240,7 @@ mod tests {
         assert!(matches!(new_prev_hash_response, ResponseFromSv2Client::Ok));
 
         // Shutdown the server and client services gracefully.
-        server_service.shutdown().await;
-        client_service.shutdown().await;
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
@@ -2307,11 +2306,20 @@ mod tests {
         let tdc_handler = SiblingIoTemplateDistributionClientHandler;
         let mining_handler = DummyMiningServerHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         // Create the Sv2ServerService with a wrong constructor.
-        let mut server_service = Sv2ServerService::new(server_config, mining_handler).unwrap();
+        let mut server_service =
+            Sv2ServerService::new(server_config, mining_handler, cancellation_token.clone())
+                .unwrap();
         // Create the Sv2ClientService with a wrong constructor.
-        let mut client_service =
-            Sv2ClientService::new(client_config, NullSv2MiningClientHandler, tdc_handler).unwrap();
+        let mut client_service = Sv2ClientService::new(
+            client_config,
+            NullSv2MiningClientHandler,
+            tdc_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
 
         // Start the server and client services.
         server_service.start().await.unwrap();
@@ -2350,8 +2358,7 @@ mod tests {
         ));
 
         // Shutdown the server and client services gracefully.
-        server_service.shutdown().await;
-        client_service.shutdown().await;
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
@@ -2388,10 +2395,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         )
         .unwrap();
 

@@ -6,6 +6,7 @@ use bitcoin::{
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
+use tokio_util::sync::CancellationToken;
 use tower_stratum::client::service::Sv2ClientService;
 use tower_stratum::client::service::config::Sv2ClientServiceConfig;
 use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
@@ -17,6 +18,7 @@ use tracing::{error, info};
 pub struct MyMiningClient {
     sv2_client_service:
         Sv2ClientService<MyMiningClientHandler, NullSv2TemplateDistributionClientHandler>,
+    cancellation_token: CancellationToken,
 }
 
 impl MyMiningClient {
@@ -42,6 +44,7 @@ impl MyMiningClient {
 
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
         let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
 
         let nominal_hashrate = measure_hashrate().await;
@@ -52,6 +55,7 @@ impl MyMiningClient {
             config.n_extended_channels,
             config.n_standard_channels,
             tx,
+            cancellation_token.clone(),
         );
 
         let sv2_client_service = Sv2ClientService::new_with_request_injector(
@@ -59,10 +63,14 @@ impl MyMiningClient {
             mining_handler,
             template_distribution_handler,
             rx,
+            cancellation_token.clone(),
         )
         .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
 
-        Ok(Self { sv2_client_service })
+        Ok(Self {
+            sv2_client_service,
+            cancellation_token,
+        })
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -76,7 +84,7 @@ impl MyMiningClient {
 
     pub async fn shutdown(&mut self) {
         info!("Shutting down Mining Client");
-        self.sv2_client_service.shutdown().await;
+        self.cancellation_token.cancel();
     }
 }
 

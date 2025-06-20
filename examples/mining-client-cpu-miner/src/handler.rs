@@ -20,6 +20,7 @@ use crate::miner::standard::StandardMiner;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error, info};
 
@@ -32,6 +33,7 @@ pub struct MyMiningClientHandler {
     extended_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<ExtendedMiner>>>>>,
     standard_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<StandardMiner>>>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    cancellation_token: CancellationToken,
 }
 
 impl MyMiningClientHandler {
@@ -41,6 +43,7 @@ impl MyMiningClientHandler {
         n_extended_channels: u8,
         n_standard_channels: u8,
         request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        cancellation_token: CancellationToken,
     ) -> Self {
         Self {
             user_identity,
@@ -54,6 +57,7 @@ impl MyMiningClientHandler {
                 n_standard_channels as usize,
             ))),
             request_injector,
+            cancellation_token,
         }
     }
 }
@@ -104,17 +108,6 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         )))
     }
 
-    /// Should be used to kill any spawned tasks
-    async fn shutdown(&mut self) {
-        for (_, standard_channel) in self.standard_channels.read().await.iter() {
-            standard_channel.write().await.shutdown();
-        }
-
-        for (_, extended_channel) in self.extended_channels.read().await.iter() {
-            extended_channel.write().await.shutdown();
-        }
-    }
-
     async fn handle_open_standard_mining_channel_success(
         &mut self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
@@ -141,6 +134,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             Arc::new(RwLock::new(StandardMiner::new(
                 standard_channel.clone(),
                 self.request_injector.clone(),
+                self.cancellation_token.clone(),
             ))),
         );
 
@@ -177,6 +171,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             Arc::new(RwLock::new(ExtendedMiner::new(
                 extended_channel.clone(),
                 self.request_injector.clone(),
+                self.cancellation_token.clone(),
             ))),
         );
 

@@ -2,10 +2,10 @@ use anyhow::Ok;
 use integration_tests_sv2::start_template_provider;
 use mining_server_handler::MyMiningServerHandler;
 use template_distribution_handler::MyTemplateDistributionHandler;
+use tokio_util::sync::CancellationToken;
 use tower_stratum::{
     client::service::{
-        Sv2ClientService,
-        subprotocols::mining::handler::NullSv2MiningClientHandler,
+        Sv2ClientService, subprotocols::mining::handler::NullSv2MiningClientHandler,
     },
     server::service::Sv2ServerService,
 };
@@ -48,10 +48,24 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize the handlers for TemplateDistribution and MiningServer.
     let tdc_handler = MyTemplateDistributionHandler::new(
-        config.client_config.template_distribution_config.as_ref().unwrap().coinbase_output_constraints.0,
-        config.client_config.template_distribution_config.as_ref().unwrap().coinbase_output_constraints.1,
+        config
+            .client_config
+            .template_distribution_config
+            .as_ref()
+            .unwrap()
+            .coinbase_output_constraints
+            .0,
+        config
+            .client_config
+            .template_distribution_config
+            .as_ref()
+            .unwrap()
+            .coinbase_output_constraints
+            .1,
     );
     let mining_handler = MyMiningServerHandler::default();
+
+    let cancellation_token = CancellationToken::new();
 
     // Create the Sv2ServerService and Sv2ClientService using the handlers.
 
@@ -60,7 +74,12 @@ async fn main() -> anyhow::Result<()> {
     let (
         mut server_service,
         sibling_server_io, // <----- SiblingIO is created here.
-    ) = Sv2ServerService::new_with_sibling_io(config.server_config, mining_handler).unwrap();
+    ) = Sv2ServerService::new_with_sibling_io(
+        config.server_config,
+        mining_handler,
+        cancellation_token.clone(),
+    )
+    .unwrap();
 
     // Create the client service that communicates with the server using the `sibling_server_io` created above.
     let client_config = config.client_config.clone();
@@ -69,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
         NullSv2MiningClientHandler,
         tdc_handler,
         sibling_server_io, // <----- SiblingIO is passed here.
+        cancellation_token.clone(),
     )?;
 
     // Start the server and client services.
@@ -84,8 +104,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::signal::ctrl_c().await?;
 
     // Shutdown the server and client services gracefully.
-    server_service.shutdown().await;
-    client_service.shutdown().await;
+    cancellation_token.cancel();
     info!("Server and Client services shutdown");
 
     Ok(())

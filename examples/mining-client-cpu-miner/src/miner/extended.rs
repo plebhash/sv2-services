@@ -16,13 +16,15 @@ use bitcoin::{
 };
 
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 
 pub struct ExtendedMiner {
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
-    shutdown_tx: broadcast::Sender<()>,
+    global_cancellation_token: CancellationToken,
+    miner_cancellation_token: CancellationToken,
     is_mining: bool,
 }
 
@@ -30,19 +32,15 @@ impl ExtendedMiner {
     pub fn new(
         extended_channel: ExtendedChannel<'static>,
         request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        global_cancellation_token: CancellationToken,
     ) -> Self {
+        let miner_cancellation_token = CancellationToken::new();
         Self {
             extended_channel: Arc::new(RwLock::new(extended_channel)),
             request_injector,
-            shutdown_tx: broadcast::channel(1).0,
+            global_cancellation_token,
+            miner_cancellation_token,
             is_mining: false,
-        }
-    }
-
-    pub fn shutdown(&mut self) {
-        // Send shutdown signal to all tasks
-        if let Err(e) = self.shutdown_tx.send(()) {
-            error!("Failed to send shutdown signal: {}", e);
         }
     }
 
@@ -68,19 +66,24 @@ impl ExtendedMiner {
         // we should start mining immediately
         if let Some(_min_ntime) = new_extended_mining_job.min_ntime.into_inner() {
             if self.is_mining {
-                // kill task of past job
-                if let Err(e) = self.shutdown_tx.send(()) {
-                    error!("Failed to send shutdown signal: {}", e);
-                }
+                // trigger miner cancellation token to kill task of past job
+                self.miner_cancellation_token.cancel();
             }
 
             let request_injector = self.request_injector.clone();
-            let shutdown_rx = self.shutdown_tx.subscribe();
+            let global_cancellation_token = self.global_cancellation_token.clone();
+            let miner_cancellation_token = self.miner_cancellation_token.clone();
 
             let extended_channel = self.extended_channel.clone();
 
             tokio::spawn(async move {
-                mine_job(extended_channel, request_injector, shutdown_rx).await;
+                mine_job(
+                    extended_channel,
+                    request_injector,
+                    global_cancellation_token,
+                    miner_cancellation_token,
+                )
+                .await;
             });
 
             self.is_mining = true;
@@ -96,20 +99,24 @@ impl ExtendedMiner {
         drop(extended_channel);
 
         if self.is_mining {
-            // send shutdown signal to kill task of past job
-            if let Err(e) = self.shutdown_tx.send(()) {
-                error!("Failed to send shutdown signal: {}", e);
-            }
+            // trigger miner cancellation token to kill task of past job
+            self.miner_cancellation_token.cancel();
         }
 
         // Extract needed values from self before spawning
         let request_injector = self.request_injector.clone();
-        let shutdown_rx = self.shutdown_tx.subscribe();
-
+        let global_cancellation_token = self.global_cancellation_token.clone();
+        let miner_cancellation_token = self.miner_cancellation_token.clone();
         let extended_channel = self.extended_channel.clone();
 
         tokio::spawn(async move {
-            mine_job(extended_channel, request_injector, shutdown_rx).await;
+            mine_job(
+                extended_channel,
+                request_injector,
+                global_cancellation_token,
+                miner_cancellation_token,
+            )
+            .await;
         });
 
         self.is_mining = true;
@@ -126,7 +133,8 @@ impl ExtendedMiner {
 async fn mine_job(
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
-    mut shutdown_rx: broadcast::Receiver<()>,
+    global_cancellation_token: CancellationToken,
+    miner_cancellation_token: CancellationToken,
 ) {
     let extended_channel_guard = extended_channel.read().await;
     let channel_id = extended_channel_guard.get_channel_id();
@@ -170,8 +178,12 @@ async fn mine_job(
 
     loop {
         tokio::select! {
-            _ = shutdown_rx.recv() => {
-                debug!("miner task received shutdown signal... channel id: {} job id: {}", channel_id, active_job.job_id);
+            _ = global_cancellation_token.cancelled() => {
+                debug!("miner task cancelled... channel id: {} job id: {}", channel_id, active_job.job_id);
+                break;
+            }
+            _ = miner_cancellation_token.cancelled() => {
+                debug!("miner task cancelled... channel id: {} job id: {}", channel_id, active_job.job_id);
                 break;
             }
             _ = tokio::task::yield_now() => {

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 tower-stratum = { path = "../.." }
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7.15"
 anyhow = "1.0.98"
 tracing = "0.1.41"
 roles_logic_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }

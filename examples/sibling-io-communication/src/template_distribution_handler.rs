@@ -19,7 +19,10 @@ pub struct MyTemplateDistributionHandler {
 }
 
 impl MyTemplateDistributionHandler {
-    pub fn new(coinbase_output_max_additional_size: u32, coinbase_output_max_additional_sigops: u16) -> Self {
+    pub fn new(
+        coinbase_output_max_additional_size: u32,
+        coinbase_output_max_additional_sigops: u16,
+    ) -> Self {
         Self {
             coinbase_output_max_additional_size,
             coinbase_output_max_additional_sigops,
@@ -42,10 +45,9 @@ impl Sv2TemplateDistributionClientHandler for MyTemplateDistributionHandler {
                     self.coinbase_output_max_additional_size,
                     self.coinbase_output_max_additional_sigops,
                 ),
-            ))))
+            ),
+        )))
     }
-
-    async fn shutdown(&mut self) {}
 
     async fn handle_new_template(
         &self,
