@@ -194,7 +194,7 @@ async fn mine_job(
     loop {
         tokio::select! {
             _ = shutdown_rx.recv() => {
-                debug!("mine job id {} task received shutdown signal", job.job_id);
+                debug!("miner task received shutdown signal... channel id: {} job id: {}", job.channel_id, job.job_id);
                 break;
             }
             _ = tokio::task::yield_now() => {
