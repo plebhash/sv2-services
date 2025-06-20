@@ -265,6 +265,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
 
             match standard_channel
                 .set_extranonce_prefix(set_extranonce_prefix.extranonce_prefix.to_vec())
+                .await
             {
                 Ok(()) => {
                     info!(
@@ -290,6 +291,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
 
             match extended_channel
                 .set_extranonce_prefix(set_extranonce_prefix.extranonce_prefix.to_vec())
+                .await
             {
                 Ok(()) => {
                     info!(
@@ -353,7 +355,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .expect("channel id must exist")
                 .write()
                 .await;
-            standard_channel.on_new_mining_job(new_mining_job.clone().into_static());
+            standard_channel
+                .on_new_mining_job(new_mining_job.clone().into_static())
+                .await;
             info!(
                 "NewMiningJob processed: Standard Channel ID: {:?}, Job ID: {:?}",
                 new_mining_job.channel_id, new_mining_job.job_id
@@ -389,7 +393,8 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .write()
                 .await;
             extended_channel
-                .on_new_extended_mining_job(new_extended_mining_job.clone().into_static());
+                .on_new_extended_mining_job(new_extended_mining_job.clone().into_static())
+                .await;
             info!(
                 "NewExtendedMiningJob processed: Extended Channel ID: {:?}, Job ID: {:?}",
                 new_extended_mining_job.channel_id, new_extended_mining_job.job_id
@@ -426,7 +431,10 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .write()
                 .await;
 
-            match standard_channel.on_set_new_prev_hash(set_new_prev_hash.clone().into_static()) {
+            match standard_channel
+                .on_set_new_prev_hash(set_new_prev_hash.clone().into_static())
+                .await
+            {
                 Ok(()) => {
                     info!(
                         "SetNewPrevHash processed: Standard Channel ID: {:?}, Job ID: {:?}",
@@ -449,7 +457,10 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .write()
                 .await;
 
-            match extended_channel.on_set_new_prev_hash(set_new_prev_hash.clone().into_static()) {
+            match extended_channel
+                .on_set_new_prev_hash(set_new_prev_hash.clone().into_static())
+                .await
+            {
                 Ok(()) => {
                     info!(
                         "SetNewPrevHash processed: Extended Channel ID: {:?}, Job ID: {:?}",
@@ -508,7 +519,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .write()
                 .await;
 
-            standard_channel.set_target(set_target.maximum_target.clone().into());
+            standard_channel
+                .set_target(set_target.maximum_target.clone().into())
+                .await;
             info!(
                 "SetTarget processed: Standard Channel ID: {:?}",
                 set_target.channel_id
@@ -522,7 +535,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 .write()
                 .await;
 
-            extended_channel.set_target(set_target.maximum_target.into());
+            extended_channel
+                .set_target(set_target.maximum_target.into())
+                .await;
             info!(
                 "SetTarget processed: Extended Channel ID: {:?}",
                 set_target.channel_id

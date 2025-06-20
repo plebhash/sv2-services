@@ -10,17 +10,17 @@ use tower_stratum::roles_logic_sv2::{
 };
 
 use bitcoin::{
-    BlockHash, CompactTarget,
+    CompactTarget,
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
 
 use std::sync::Arc;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, RwLock, broadcast};
 use tracing::{debug, error, info};
 
 pub struct ExtendedMiner {
-    extended_channel: ExtendedChannel<'static>,
+    extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
     shutdown_tx: broadcast::Sender<()>,
     is_mining: bool,
@@ -33,7 +33,7 @@ impl ExtendedMiner {
         request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
     ) -> Self {
         Self {
-            extended_channel,
+            extended_channel: Arc::new(RwLock::new(extended_channel)),
             request_injector,
             shutdown_tx: broadcast::channel(1).0,
             is_mining: false,
@@ -48,21 +48,23 @@ impl ExtendedMiner {
         }
     }
 
-    pub fn set_extranonce_prefix(
+    pub async fn set_extranonce_prefix(
         &mut self,
         extranonce_prefix: Vec<u8>,
     ) -> Result<(), ExtendedChannelError> {
         self.extended_channel
+            .write()
+            .await
             .set_extranonce_prefix(extranonce_prefix)?;
         Ok(())
     }
 
-    pub fn on_new_extended_mining_job(
+    pub async fn on_new_extended_mining_job(
         &mut self,
         new_extended_mining_job: NewExtendedMiningJob<'static>,
     ) {
-        self.extended_channel
-            .on_new_extended_mining_job(new_extended_mining_job.clone());
+        let mut extended_channel = self.extended_channel.write().await;
+        extended_channel.on_new_extended_mining_job(new_extended_mining_job.clone());
 
         // this is a non-future job
         // we should start mining immediately
@@ -73,31 +75,16 @@ impl ExtendedMiner {
                     error!("Failed to send shutdown signal: {}", e);
                 }
             }
-            // spawn task for new job
-            let (active_job, extranonce_prefix) = self
-                .extended_channel
-                .get_active_job()
-                .expect("channel must have active job")
-                .clone();
-            let chain_tip = self
-                .extended_channel
-                .get_chain_tip()
-                .expect("channel must have chain tip");
-            let prev_hash = u256_to_block_hash(chain_tip.prev_hash());
-            let nbits = chain_tip.nbits();
 
-            let channel_target = self.extended_channel.get_target().clone();
             let request_injector = self.request_injector.clone();
             let shutdown_rx = self.shutdown_tx.subscribe();
             let last_share_sequence_number = self.last_share_sequence_number.clone();
 
+            let extended_channel = self.extended_channel.clone();
+
             tokio::spawn(async move {
                 mine_job(
-                    active_job,
-                    extranonce_prefix,
-                    prev_hash,
-                    nbits,
-                    channel_target,
+                    extended_channel,
                     request_injector,
                     last_share_sequence_number,
                     shutdown_rx,
@@ -109,12 +96,13 @@ impl ExtendedMiner {
         }
     }
 
-    pub fn on_set_new_prev_hash(
+    pub async fn on_set_new_prev_hash(
         &mut self,
         set_new_prev_hash: SetNewPrevHash<'static>,
     ) -> Result<(), ExtendedChannelError> {
-        self.extended_channel
-            .on_set_new_prev_hash(set_new_prev_hash.clone())?;
+        let mut extended_channel = self.extended_channel.write().await;
+        extended_channel.on_set_new_prev_hash(set_new_prev_hash.clone())?;
+        drop(extended_channel);
 
         if self.is_mining {
             // send shutdown signal to kill task of past job
@@ -123,27 +111,16 @@ impl ExtendedMiner {
             }
         }
 
-        let (active_job, extranonce_prefix) = self
-            .extended_channel
-            .get_active_job()
-            .expect("channel must have active job")
-            .clone();
-        let channel_target = self.extended_channel.get_target().clone();
-        let prev_hash = u256_to_block_hash(set_new_prev_hash.prev_hash);
-        let nbits = set_new_prev_hash.nbits;
-
         // Extract needed values from self before spawning
         let request_injector = self.request_injector.clone();
         let shutdown_rx = self.shutdown_tx.subscribe();
         let last_share_sequence_number = self.last_share_sequence_number.clone();
 
+        let extended_channel = self.extended_channel.clone();
+
         tokio::spawn(async move {
             mine_job(
-                active_job,
-                extranonce_prefix,
-                prev_hash,
-                nbits,
-                channel_target,
+                extended_channel,
                 request_injector,
                 last_share_sequence_number,
                 shutdown_rx,
@@ -156,23 +133,40 @@ impl ExtendedMiner {
         Ok(())
     }
 
-    pub fn set_target(&mut self, target: Target) {
-        self.extended_channel.set_target(target);
+    pub async fn set_target(&mut self, target: Target) {
+        let mut extended_channel = self.extended_channel.write().await;
+        extended_channel.set_target(target);
     }
 }
 
 async fn mine_job(
-    job: NewExtendedMiningJob<'static>,
-    extranonce_prefix: Vec<u8>,
-    prevhash: BlockHash,
-    nbits: u32,
-    channel_target: Target,
+    extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
     last_share_sequence_number: Arc<Mutex<u32>>,
     mut shutdown_rx: broadcast::Receiver<()>,
 ) {
+    let extended_channel_guard = extended_channel.read().await;
+    let channel_id = extended_channel_guard.get_channel_id();
+    let (active_job, extranonce_prefix) = extended_channel_guard
+        .get_active_job()
+        .expect("channel must have active job")
+        .clone();
+    let channel_target = extended_channel_guard.get_target().clone();
+    let nbits = extended_channel_guard
+        .get_chain_tip()
+        .expect("channel must have chain tip")
+        .nbits();
+    let prevhash = u256_to_block_hash(
+        extended_channel_guard
+            .get_chain_tip()
+            .expect("channel must have chain tip")
+            .prev_hash(),
+    );
+
+    drop(extended_channel_guard);
+
     let mut nonce = 0;
-    let mut ntime = job
+    let mut ntime = active_job
         .min_ntime
         .into_inner()
         .expect("only active jobs allowed");
@@ -182,10 +176,10 @@ async fn mine_job(
     let extranonce = vec![0; 32 - extranonce_prefix.len()];
     let full_extranonce = [extranonce_prefix.clone(), extranonce.clone()].concat();
     let merkle_root: [u8; 32] = merkle_root_from_path(
-        job.coinbase_tx_prefix.inner_as_ref(),
-        job.coinbase_tx_suffix.inner_as_ref(),
+        active_job.coinbase_tx_prefix.inner_as_ref(),
+        active_job.coinbase_tx_suffix.inner_as_ref(),
         &full_extranonce,
-        &job.merkle_path.inner_as_ref(),
+        &active_job.merkle_path.inner_as_ref(),
     )
     .expect("merkle root must be valid")
     .try_into()
@@ -194,12 +188,12 @@ async fn mine_job(
     loop {
         tokio::select! {
             _ = shutdown_rx.recv() => {
-                debug!("miner task received shutdown signal... channel id: {} job id: {}", job.channel_id, job.job_id);
+                debug!("miner task received shutdown signal... channel id: {} job id: {}", channel_id, active_job.job_id);
                 break;
             }
             _ = tokio::task::yield_now() => {
                 let header = Header {
-                    version: Version::from_consensus(job.version as i32),
+                    version: Version::from_consensus(active_job.version as i32),
                     prev_blockhash: prevhash,
                     merkle_root: (*Hash::from_bytes_ref(
                         &merkle_root
@@ -220,14 +214,19 @@ async fn mine_job(
                     let mut last_share_sequence_number = last_share_sequence_number.lock().await;
 
                     let share = SubmitSharesExtended {
-                        channel_id: job.channel_id,
+                        channel_id: channel_id,
                         sequence_number: *last_share_sequence_number,
-                        job_id: job.job_id,
+                        job_id: active_job.job_id,
                         nonce,
                         ntime,
-                        version: job.version,
+                        version: active_job.version,
                         extranonce: extranonce.clone().try_into().expect("extranonce must be serializable"),
                     };
+
+                    // log share on channel state
+                    let mut extended_channel_guard = extended_channel.write().await;
+                    let _ = extended_channel_guard.validate_share(share.clone());
+                    drop(extended_channel_guard);
 
                     match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesExtended(share.clone())))).await {
                         Ok(_) => {
