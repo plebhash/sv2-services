@@ -6,7 +6,7 @@ More specifically, we implement a CPU miner.
 
 ## `config` module
 
-The `config` module is reponsible for pasing a `.toml` file with the following fields:
+The `config` module is reponsible for parsing a `.toml` file with the following fields:
 - `server_addr`: IP and port of the Sv2 Mining Server
 - `auth_pk`: authority Public Key of the Sv2 Mining Server
 - `n_standard_channels`: the number of Standard Channels to open with the Sv2 Mining Server
