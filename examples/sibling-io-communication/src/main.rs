@@ -91,17 +91,27 @@ async fn main() -> anyhow::Result<()> {
         cancellation_token.clone(),
     )?;
 
-    // Start the server and client services.
-    server_service.start().await?;
-    client_service.start().await?;
+    // Use tokio::select to wait for either client or server completion or Ctrl+C
+    tokio::select! {
+        result = server_service.start() => {
+            if let Err(e) = result {
+                tracing::error!("Server error: {}", e);
+            }
+        }
+        result = client_service.start() => {
+            if let Err(e) = result {
+                tracing::error!("Client error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+    }
 
     // At this point, the client starts receiving new templates from the Template Provider.
     // These templates are sent to the MiningServer via SiblingIO.
     // Check the handlers to see how the messages are passed.
     // Logs are printed in the handlers for debugging and monitoring.
-
-    // Wait for a Ctrl-C signal to terminate the application.
-    tokio::signal::ctrl_c().await?;
 
     // Shutdown the server and client services gracefully.
     cancellation_token.cancel();

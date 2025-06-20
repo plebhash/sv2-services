@@ -319,6 +319,9 @@ where
 
         debug!("Sv2ServerService started");
 
+        // wait for cancellation token to be cancelled
+        self.cancellation_token.cancelled().await;
+
         Ok(())
     }
 
@@ -1011,10 +1014,17 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service =
+        let sv2_server_service =
             Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1128,10 +1138,17 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service =
+        let sv2_server_service =
             Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client_1 = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1217,10 +1234,17 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service =
+        let sv2_server_service =
             Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1319,10 +1343,17 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service =
+        let sv2_server_service =
             Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Test min version too high
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1466,9 +1497,17 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service =
+        let sv2_server_service =
             Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
-        sv2_server_service.start().await.unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1612,14 +1651,21 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service = Sv2ServerService::new(
+        let sv2_server_service = Sv2ServerService::new(
             sv2_server_config,
             mining_handler,
             cancellation_token.clone(),
         )
         .unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Verify initial state
         assert_eq!(sv2_server_service.get_client_count().await, 0);
@@ -1669,14 +1715,21 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_server_service = Sv2ServerService::new(
+        let sv2_server_service = Sv2ServerService::new(
             sv2_server_config,
             mining_handler,
             cancellation_token.clone(),
         )
         .unwrap();
 
-        sv2_server_service.start().await.unwrap();
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create and connect multiple clients
         let client1 = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();

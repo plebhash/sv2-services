@@ -9,6 +9,7 @@ use tower_stratum::client::service::config::Sv2ClientServiceTemplateDistribution
 use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use tracing::info;
 
+#[derive(Clone)]
 pub struct MyTemplateDistributionClient {
     sv2_client_service: Sv2ClientService<NullSv2MiningClientHandler, MyTemplateDistributionHandler>,
     cancellation_token: CancellationToken,

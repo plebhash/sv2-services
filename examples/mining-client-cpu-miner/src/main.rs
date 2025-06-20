@@ -31,11 +31,17 @@ async fn main() -> anyhow::Result<()> {
     // Create and start the client
     let mut client = MyMiningClient::new(config).await?;
 
-    // Start the client service
-    client.start().await?;
-
-    // Wait for Ctrl+C
-    tokio::signal::ctrl_c().await?;
+    // Use tokio::select to wait for either client completion or Ctrl+C
+    tokio::select! {
+        result = client.start() => {
+            if let Err(e) = result {
+                tracing::error!("Client error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+    }
 
     // Shutdown the client
     client.shutdown().await;

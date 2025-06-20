@@ -9,6 +9,7 @@ use tower_stratum::server::service::config::Sv2ServerServiceMiningConfig;
 use tower_stratum::server::service::config::Sv2ServerTcpConfig;
 use tracing::info;
 
+#[derive(Clone)]
 pub struct MyMiningServer {
     sv2_server_service: Sv2ServerService<MyMiningServerHandler>,
     cancellation_token: CancellationToken,

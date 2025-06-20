@@ -26,8 +26,14 @@ async fn test_mining_client_one_extended_channel() {
         device_id: "test".to_string(),
     };
 
-    let mut client = MyMiningClient::new(config).await.unwrap();
-    client.start().await.unwrap();
+    let client = MyMiningClient::new(config).await.unwrap();
+    let mut client_clone = client.clone();
+    tokio::spawn(async move {
+        client_clone.start().await.unwrap();
+    });
+
+    // Wait for client to be ready
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     sniffer
         .wait_for_message_type(MessageDirection::ToUpstream, MESSAGE_TYPE_SETUP_CONNECTION)

@@ -17,10 +17,8 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging with debug level
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .init();
+    // Initialize logging
+    tracing_subscriber::fmt::init();
 
     // Parse command line arguments
     let args = Args::parse();
@@ -28,14 +26,20 @@ async fn main() -> anyhow::Result<()> {
     // Load configuration from file
     let config = MyMiningServerConfig::from_file(args.config)?;
 
-    // Create and start the server
+    // Create the server
     let mut server = MyMiningServer::new(config).await?;
 
-    // Start the server
-    server.start().await?;
-
-    // Wait for Ctrl+C
-    tokio::signal::ctrl_c().await?;
+    // Use tokio::select to wait for either server completion or Ctrl+C
+    tokio::select! {
+        result = server.start() => {
+            if let Err(e) = result {
+                tracing::error!("Server error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+    }
 
     // Shutdown the server
     server.shutdown().await;
@@ -66,11 +70,19 @@ mod tests {
         // Load configuration from file
         let config = MyMiningServerConfig::from_file(args.config).unwrap();
 
-        // Create and start the server
+        // Create the server
         let mut server = MyMiningServer::new(config.clone()).await.unwrap();
 
-        // Start the server
-        server.start().await.unwrap();
+        // Start the server in a background task
+        let mut server_clone = server.clone();
+        tokio::spawn(async move {
+            if let Err(e) = server_clone.start().await {
+                eprintln!("Server error: {}", e);
+            }
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create the server address
         let server_addr = SocketAddr::new(

@@ -350,6 +350,9 @@ where
             }
         }
 
+        // wait for cancellation token to be cancelled
+        self.cancellation_token.cancelled().await;
+
         Ok(())
     }
 
@@ -2029,7 +2032,7 @@ mod tests {
 
         let cancellation_token = CancellationToken::new();
 
-        let mut sv2_client_service = Sv2ClientService::new_with_request_injector(
+        let sv2_client_service = Sv2ClientService::new_with_request_injector(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             DummyTemplateDistributionClientHandler,
@@ -2038,7 +2041,13 @@ mod tests {
         )
         .unwrap();
 
-        sv2_client_service.start().await.unwrap();
+        let mut sv2_client_service_clone = sv2_client_service.clone();
+        tokio::spawn(async move {
+            sv2_client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         assert!(
             sv2_client_service
@@ -2140,7 +2149,7 @@ mod tests {
 
         // Create the Sv2ServerService and its sibling IO for communication with the client.
         let (
-            mut server_service,
+            server_service,
             sibling_server_io, // SiblingIO is created here.
         ) = Sv2ServerService::new_with_sibling_io(
             server_config,
@@ -2160,9 +2169,21 @@ mod tests {
         )
         .unwrap();
 
-        // Start the server and client services.
-        server_service.start().await.unwrap();
-        client_service.start().await.unwrap();
+        let mut server_service_clone = server_service.clone();
+        tokio::spawn(async move {
+            server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let mut client_service_clone = client_service.clone();
+        tokio::spawn(async move {
+            client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         client_service.ready().await.unwrap();
 
@@ -2309,7 +2330,7 @@ mod tests {
         let cancellation_token = CancellationToken::new();
 
         // Create the Sv2ServerService with a wrong constructor.
-        let mut server_service =
+        let server_service =
             Sv2ServerService::new(server_config, mining_handler, cancellation_token.clone())
                 .unwrap();
         // Create the Sv2ClientService with a wrong constructor.
@@ -2321,9 +2342,21 @@ mod tests {
         )
         .unwrap();
 
-        // Start the server and client services.
-        server_service.start().await.unwrap();
-        client_service.start().await.unwrap();
+        let mut server_service_clone = server_service.clone();
+        tokio::spawn(async move {
+            server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client and server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let mut client_service_clone = client_service.clone();
+        tokio::spawn(async move {
+            client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a dummy NewTemplate message to simulate a new mining template.
         let new_template = NewTemplate {

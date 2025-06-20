@@ -15,6 +15,7 @@ use tower_stratum::client::service::subprotocols::template_distribution::handler
 use tower_stratum::roles_logic_sv2::utils::u256_to_block_hash;
 use tracing::{error, info};
 
+#[derive(Clone)]
 pub struct MyMiningClient {
     sv2_client_service:
         Sv2ClientService<MyMiningClientHandler, NullSv2TemplateDistributionClientHandler>,
