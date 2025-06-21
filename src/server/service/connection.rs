@@ -1,5 +1,5 @@
-use binary_sv2::Str0255;
-use roles_logic_sv2::common_messages_sv2::Protocol;
+use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::Str0255;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 
 /// Represents a successfully established Sv2 connection after `SetupConnection` Sv2 message is received and handled.
 #[derive(Debug, Clone)]

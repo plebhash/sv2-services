@@ -13,15 +13,15 @@ use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandle
 use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use crate::server::tcp::encrypted::start_encrypted_tcp_server;
 use crate::server::ClientIdGenerator;
-use roles_logic_sv2::common_messages_sv2::{
-    Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
-};
-use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use stratum_common::roles_logic_sv2::common_messages_sv2::{
+    Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
+};
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tower::{Service, ServiceExt};
@@ -966,9 +966,10 @@ mod tests {
     };
     use crate::Sv2MessageFrame;
     use key_utils::{Secp256k1PublicKey, Secp256k1SecretKey};
-    use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-    use roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+    use stratum_common::roles_logic_sv2;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
+    use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
     use tokio_util::sync::CancellationToken;
 
     fn get_available_port() -> u16 {

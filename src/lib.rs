@@ -8,20 +8,21 @@
 //! The goal is to provide a "batteries-included" approach to implement stateful Sv2 applications.
 
 use async_channel::{Receiver, Sender};
-use codec_sv2::{StandardEitherFrame, StandardSv2Frame};
-use framing_sv2::framing::Frame;
-use roles_logic_sv2::parsers::{
-    AnyMessage, CommonMessages,
-    JobDeclaration::{
-        AllocateMiningJobToken, AllocateMiningJobTokenSuccess, DeclareMiningJob,
-        DeclareMiningJobError, DeclareMiningJobSuccess, ProvideMissingTransactions,
-        ProvideMissingTransactionsSuccess, PushSolution,
+use stratum_common::roles_logic_sv2::{
+    codec_sv2::{framing_sv2::framing::Frame, StandardEitherFrame, StandardSv2Frame},
+    parsers::{
+        AnyMessage, CommonMessages,
+        JobDeclaration::{
+            AllocateMiningJobToken, AllocateMiningJobTokenSuccess, DeclareMiningJob,
+            DeclareMiningJobError, DeclareMiningJobSuccess, ProvideMissingTransactions,
+            ProvideMissingTransactionsSuccess, PushSolution,
+        },
+        TemplateDistribution::{self, CoinbaseOutputConstraints},
     },
-    TemplateDistribution::{self, CoinbaseOutputConstraints},
 };
 
 pub use key_utils;
-pub use roles_logic_sv2;
+pub use stratum_common::roles_logic_sv2;
 pub use tower;
 
 /// Client-side modules for establishing and managing Stratum V2 connections.

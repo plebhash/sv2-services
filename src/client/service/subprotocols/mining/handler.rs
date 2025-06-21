@@ -1,7 +1,7 @@
 use crate::client::service::request::RequestToSv2ClientError;
 use crate::client::service::response::ResponseFromSv2Client;
 
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,

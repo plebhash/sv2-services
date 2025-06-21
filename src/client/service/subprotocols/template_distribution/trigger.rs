@@ -1,4 +1,4 @@
-use roles_logic_sv2::template_distribution_sv2::SubmitSolution;
+use stratum_common::roles_logic_sv2::template_distribution_sv2::SubmitSolution;
 
 /// Requests to the Client Service that are specific to the Template Distribution protocol
 #[derive(Debug, Clone)]

@@ -1,11 +1,11 @@
 use crate::server::service::request::RequestToSv2ServerError;
 use crate::server::service::response::ResponseFromSv2Server;
 
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel, SetCustomMiningJob,
     SubmitSharesExtended, SubmitSharesStandard, UpdateChannel,
 };
-use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 
 use std::task::{Context, Poll};
 

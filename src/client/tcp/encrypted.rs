@@ -1,8 +1,8 @@
-use codec_sv2::{HandshakeRole, Initiator};
 use key_utils::Secp256k1PublicKey;
-use network_helpers_sv2::noise_connection::Connection;
-use roles_logic_sv2::parsers::AnyMessage;
 use std::net::SocketAddr;
+use stratum_common::network_helpers_sv2::noise_connection::Connection;
+use stratum_common::roles_logic_sv2::codec_sv2::{HandshakeRole, Initiator};
+use stratum_common::roles_logic_sv2::parsers::AnyMessage;
 use tokio::net::TcpStream;
 
 use crate::Sv2MessageIo;
@@ -56,8 +56,8 @@ impl Sv2EncryptedTcpClient {
 mod tests {
     use super::*;
     use crate::Sv2MessageFrame;
-    use roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS;
-    use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
+    use stratum_common::roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
 
     #[tokio::test]
     async fn new_sv2_encrypted_tcp_client_works() {

@@ -22,14 +22,7 @@ tracing-subscriber = "0.3.19"
 secp256k1 = { version = "0.28.2", default-features = false }
 
 # SRI
-network_helpers_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-roles_logic_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-framing_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-codec_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-binary_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-binary_codec_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-buffer_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-noise_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+stratum-common = { git = "https://github.com/stratum-mining/stratum", branch = "main", features = ["with_network_helpers"]}
 key-utils = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
 
 [dev-dependencies]

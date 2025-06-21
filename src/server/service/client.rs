@@ -1,6 +1,6 @@
 use crate::server::service::connection::Sv2ConnectionClient;
 use crate::Sv2MessageIo;
-use roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::parsers::AnyMessage;
 use std::time::Instant;
 
 /// Representation of a Client of a Sv2 Server, to be:

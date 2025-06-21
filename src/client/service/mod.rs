@@ -11,13 +11,17 @@ use crate::client::service::subprotocols::template_distribution::handler::Sv2Tem
 use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
 use async_channel::Receiver;
-use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
-use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
+use stratum_common::roles_logic_sv2::mining_sv2::{
+    OpenExtendedMiningChannel, OpenStandardMiningChannel,
+};
+use stratum_common::roles_logic_sv2::parsers::{
+    AnyMessage, CommonMessages, Mining, TemplateDistribution,
+};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tower::{Service, ServiceExt};
@@ -1288,31 +1292,32 @@ mod tests {
     use integration_tests_sv2::start_template_provider;
     use key_utils::Secp256k1PublicKey;
     use key_utils::Secp256k1SecretKey;
-    use roles_logic_sv2::common_messages_sv2::Protocol;
-    use roles_logic_sv2::mining_sv2::OpenExtendedMiningChannel;
-    use roles_logic_sv2::mining_sv2::OpenStandardMiningChannel;
-    use roles_logic_sv2::mining_sv2::SetCustomMiningJob;
-    use roles_logic_sv2::mining_sv2::SubmitSharesExtended;
-    use roles_logic_sv2::mining_sv2::SubmitSharesStandard;
-    use roles_logic_sv2::mining_sv2::UpdateChannel;
-    use roles_logic_sv2::mining_sv2::{
+    use std::net::IpAddr;
+    use std::net::Ipv4Addr;
+    use std::net::SocketAddr;
+    use std::str::FromStr;
+    use std::task::{Context, Poll};
+    use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+    use stratum_common::roles_logic_sv2::mining_sv2::OpenExtendedMiningChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::OpenStandardMiningChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::SetCustomMiningJob;
+    use stratum_common::roles_logic_sv2::mining_sv2::SubmitSharesExtended;
+    use stratum_common::roles_logic_sv2::mining_sv2::SubmitSharesStandard;
+    use stratum_common::roles_logic_sv2::mining_sv2::UpdateChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::{
         CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
         OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
         SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel,
         SetNewPrevHash as SetNewPrevHashMining, SetTarget, SubmitSharesError, SubmitSharesSuccess,
         UpdateChannelError,
     };
-    use roles_logic_sv2::template_distribution_sv2::{
+    use stratum_common::roles_logic_sv2::template_distribution_sv2::{
         NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
     };
-    use roles_logic_sv2::template_distribution_sv2::{
+    use stratum_common::roles_logic_sv2::template_distribution_sv2::{
         MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
     };
-    use std::net::IpAddr;
-    use std::net::Ipv4Addr;
-    use std::net::SocketAddr;
-    use std::str::FromStr;
-    use std::task::{Context, Poll};
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
     use tower::{Service, ServiceExt};
@@ -2212,15 +2217,21 @@ mod tests {
             future_template: false,
             version: 0,
             coinbase_tx_version: 0,
-            coinbase_prefix: binary_codec_sv2::B0255::Owned(hex::decode("00").unwrap().to_vec()),
+            coinbase_prefix: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B0255::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             coinbase_tx_input_sequence: 0,
             coinbase_tx_value_remaining: 0,
             coinbase_tx_outputs_count: 0,
-            coinbase_tx_outputs: binary_codec_sv2::B064K::Owned(
-                hex::decode("00").unwrap().to_vec(),
-            ),
+            coinbase_tx_outputs:
+                stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K::Owned(
+                    hex::decode("00").unwrap().to_vec(),
+                ),
             coinbase_tx_locktime: 0,
-            merkle_path: binary_codec_sv2::Seq0255::new(Vec::new()).unwrap(),
+            merkle_path: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::Seq0255::new(
+                Vec::new(),
+            )
+            .unwrap(),
         };
 
         // Send the NewTemplate message to the sibling server and verify the response.
@@ -2241,10 +2252,14 @@ mod tests {
         // Create a dummy SetNewPrevHash message to simulate a new previous hash.
         let new_prev_hash = SetNewPrevHash {
             template_id: 0,
-            prev_hash: binary_codec_sv2::U256::Owned(hex::decode("00").unwrap().to_vec()),
+            prev_hash: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             header_timestamp: 0,
             n_bits: 0,
-            target: binary_codec_sv2::U256::Owned(hex::decode("00").unwrap().to_vec()),
+            target: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
         };
 
         // Send the SetNewPrevHash message to the sibling server and verify the response.
@@ -2364,15 +2379,21 @@ mod tests {
             future_template: false,
             version: 0,
             coinbase_tx_version: 0,
-            coinbase_prefix: binary_codec_sv2::B0255::Owned(hex::decode("00").unwrap().to_vec()),
+            coinbase_prefix: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B0255::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             coinbase_tx_input_sequence: 0,
             coinbase_tx_value_remaining: 0,
             coinbase_tx_outputs_count: 0,
-            coinbase_tx_outputs: binary_codec_sv2::B064K::Owned(
-                hex::decode("00").unwrap().to_vec(),
-            ),
+            coinbase_tx_outputs:
+                stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K::Owned(
+                    hex::decode("00").unwrap().to_vec(),
+                ),
             coinbase_tx_locktime: 0,
-            merkle_path: binary_codec_sv2::Seq0255::new(Vec::new()).unwrap(),
+            merkle_path: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::Seq0255::new(
+                Vec::new(),
+            )
+            .unwrap(),
         };
 
         // Send the NewTemplate message to the sibling server and verify the response.
@@ -2399,8 +2420,8 @@ mod tests {
         use crate::client::service::request::RequestToSv2Client;
         use crate::client::service::response::ResponseFromSv2Client;
         use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
-        use roles_logic_sv2::common_messages_sv2::Protocol;
-        use roles_logic_sv2::template_distribution_sv2::SubmitSolution;
+        use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+        use stratum_common::roles_logic_sv2::template_distribution_sv2::SubmitSolution;
 
         // Start a TemplateProvider
         let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
@@ -2456,7 +2477,7 @@ mod tests {
             version: 0,
             header_timestamp: 0,
             header_nonce: 0,
-            coinbase_tx: binary_codec_sv2::B064K::Owned(vec![]),
+            coinbase_tx: B064K::Owned(vec![]),
         };
 
         let submit_solution_request = RequestToSv2Client::TemplateDistributionTrigger(

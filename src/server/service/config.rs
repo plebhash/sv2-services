@@ -1,5 +1,5 @@
 use key_utils::{Secp256k1PublicKey, Secp256k1SecretKey};
-use roles_logic_sv2::common_messages_sv2::Protocol;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 use std::net::SocketAddr;
 
 /// Config parameters for a [`crate::server::service::Sv2ServerService`]

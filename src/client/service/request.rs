@@ -2,8 +2,8 @@ use crate::client::service::subprotocols::mining::trigger::MiningClientTrigger;
 use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
-use roles_logic_sv2::common_messages_sv2::Protocol;
-use roles_logic_sv2::parsers::{AnyMessage, Mining, TemplateDistribution};
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining, TemplateDistribution};
 
 /// The request type for the [`crate::client::service::Sv2ClientService`] service.
 #[derive(Debug, Clone)]

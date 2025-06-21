@@ -1,5 +1,5 @@
-use roles_logic_sv2::common_messages_sv2::Protocol;
-use roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+use stratum_common::roles_logic_sv2::parsers::AnyMessage;
 
 use crate::client::service::request::RequestToSv2Client;
 use crate::server::service::client::Sv2MessagesToClient;

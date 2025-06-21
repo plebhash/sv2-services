@@ -1,8 +1,8 @@
 use crate::client::service::request::{RequestToSv2Client, RequestToSv2ClientError};
 use crate::client::service::response::ResponseFromSv2Client;
 
-use roles_logic_sv2::parsers::TemplateDistribution;
-use roles_logic_sv2::template_distribution_sv2::{
+use stratum_common::roles_logic_sv2::parsers::TemplateDistribution;
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{
     CoinbaseOutputConstraints, NewTemplate, RequestTransactionData, RequestTransactionDataError,
     RequestTransactionDataSuccess, SetNewPrevHash, SubmitSolution,
 };
