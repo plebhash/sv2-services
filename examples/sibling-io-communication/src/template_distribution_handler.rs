@@ -1,10 +1,10 @@
 use anyhow::Result;
-use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 
-use roles_logic_sv2::template_distribution_sv2::{
+use std::task::{Context, Poll};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{
     RequestTransactionDataError, RequestTransactionDataSuccess,
 };
-use std::task::{Context, Poll};
 use tower_stratum::client::service::request::{RequestToSv2Client, RequestToSv2ClientError};
 use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;

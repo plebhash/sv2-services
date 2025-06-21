@@ -1,5 +1,5 @@
 use crate::client::format_number_with_underscores;
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,

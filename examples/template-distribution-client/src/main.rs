@@ -54,8 +54,8 @@ mod tests {
     use integration_tests_sv2::{
         interceptor::MessageDirection, start_sniffer, start_template_provider,
     };
-    use roles_logic_sv2::common_messages_sv2::*;
-    use roles_logic_sv2::template_distribution_sv2::*;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::*;
+    use stratum_common::roles_logic_sv2::template_distribution_sv2::*;
 
     #[tokio::test]
     async fn test_template_distribution_client() {

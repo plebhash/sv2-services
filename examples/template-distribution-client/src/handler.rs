@@ -1,5 +1,5 @@
 use anyhow::Result;
-use roles_logic_sv2::template_distribution_sv2::{
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{
     NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
 };
 use std::task::{Context, Poll};

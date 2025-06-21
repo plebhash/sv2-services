@@ -3,8 +3,8 @@ use integration_tests_sv2::{
 };
 use mining_client_cpu_miner::client::MyMiningClient;
 use mining_client_cpu_miner::config::MyMiningClientConfig;
-use roles_logic_sv2::common_messages_sv2::*;
-use roles_logic_sv2::mining_sv2::*;
+use stratum_common::roles_logic_sv2::common_messages_sv2::*;
+use stratum_common::roles_logic_sv2::mining_sv2::*;
 
 #[tokio::test]
 async fn test_mining_client_one_standard_channel() {

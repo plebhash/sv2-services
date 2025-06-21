@@ -1,13 +1,13 @@
 use anyhow::Result;
-use binary_sv2::B032;
-use binary_sv2::U256;
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B032;
+use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256;
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel,
     OpenStandardMiningChannelSuccess, SetCustomMiningJob, SubmitSharesExtended,
     SubmitSharesStandard, UpdateChannel,
 };
-use roles_logic_sv2::parsers::{AnyMessage, Mining};
-use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

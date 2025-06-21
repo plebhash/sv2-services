@@ -53,8 +53,8 @@ mod tests {
     use integration_tests_sv2::{
         interceptor::MessageDirection, start_mining_device_sv2, start_sniffer,
     };
-    use roles_logic_sv2::common_messages_sv2::*;
-    use roles_logic_sv2::mining_sv2::*;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::*;
+    use stratum_common::roles_logic_sv2::mining_sv2::*;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     #[tokio::test]
