@@ -561,8 +561,8 @@ where
                             }
                         }
                         Err(_) => {
-                            error!("Message listener channel closed");
-                            tcp_client.shutdown();
+                            error!("{:?} server closed the connection", protocol);
+                            self.cancellation_token.cancel();
                             break;
                         }
                     }
