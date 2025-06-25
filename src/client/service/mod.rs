@@ -626,6 +626,9 @@ where
                 }
             }
         }
+
+        debug!("Sibling server service request listener task ended");
+        sibling_server_service_io.shutdown();
         Ok(())
     }
 
@@ -660,6 +663,10 @@ where
                 }
             }
         }
+
+        debug!("Request injector listener task ended");
+        request_rx.close();
+
         Ok(())
     }
 

@@ -285,6 +285,8 @@ where
                         }
                     }
                 }
+                debug!("Sibling client service request monitor task ended");
+                sibling_io.shutdown();
             });
         }
 
