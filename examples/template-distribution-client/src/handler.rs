@@ -1,8 +1,8 @@
 use anyhow::Result;
+use std::task::{Context, Poll};
 use stratum_common::roles_logic_sv2::template_distribution_sv2::{
     NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
 };
-use std::task::{Context, Poll};
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::request::RequestToSv2ClientError;
 use tower_stratum::client::service::response::ResponseFromSv2Client;

@@ -1,12 +1,12 @@
 use crate::client::format_number_with_underscores;
 use dashmap::DashMap;
+use std::task::{Context, Poll};
 use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,
     SubmitSharesError, SubmitSharesSuccess, UpdateChannelError,
 };
-use std::task::{Context, Poll};
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::request::RequestToSv2ClientError;
 use tower_stratum::client::service::response::ResponseFromSv2Client;

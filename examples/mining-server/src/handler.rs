@@ -1,5 +1,6 @@
 use anyhow::Result;
 use dashmap::DashMap;
+use std::sync::Arc;
 use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B032;
 use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256;
 use stratum_common::roles_logic_sv2::mining_sv2::{
@@ -9,7 +10,6 @@ use stratum_common::roles_logic_sv2::mining_sv2::{
 };
 use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining};
 use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
-use std::sync::Arc;
 use tower_stratum::server::service::client::Sv2MessagesToClient;
 use tower_stratum::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
 use tower_stratum::server::service::response::ResponseFromSv2Server;
