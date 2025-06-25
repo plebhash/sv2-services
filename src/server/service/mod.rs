@@ -13,7 +13,7 @@ use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandle
 use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use crate::server::tcp::encrypted::start_encrypted_tcp_server;
 use crate::server::ClientIdGenerator;
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -22,7 +22,6 @@ use stratum_common::roles_logic_sv2::common_messages_sv2::{
     Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
 };
 use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
-use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tower::{Service, ServiceExt};
 use tracing::{debug, error};
@@ -59,7 +58,7 @@ where
     M: Sv2MiningServerHandler + Clone + Send + Sync + 'static,
 {
     config: Sv2ServerServiceConfig,
-    clients: Arc<RwLock<HashMap<u32, Arc<RwLock<Sv2ServerServiceClient>>>>>,
+    clients: Arc<DashMap<u32, Arc<Sv2ServerServiceClient>>>,
     client_id_generator: ClientIdGenerator,
     mining_handler: M,
     // todo: job_declaration_handler: J,
@@ -118,7 +117,7 @@ where
 
         let sv2_server_service = Sv2ServerService {
             config: config.clone(),
-            clients: Arc::new(RwLock::new(HashMap::new())),
+            clients: Arc::new(DashMap::new()),
             client_id_generator: ClientIdGenerator::new(),
             mining_handler,
             sibling_client_service_io,
@@ -149,7 +148,7 @@ where
         let inactivity_limit = self.config.inactivity_limit;
         let mut this = self.clone();
 
-        // spawn a task to monitor for inactive connections and clean up the HashMap
+        // spawn a task to monitor for inactive connections and clean up the DashMap
         tokio::spawn(async move {
             let cancellation_token = cancellation_token;
             loop {
@@ -161,14 +160,12 @@ where
                     }
                     _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
                         let mut clients_to_remove = Vec::new();
-                        {
-                            let clients_guard = clients.read().await;
-                            // Identify inactive clients
-                            for (client_id, client) in clients_guard.iter() {
-                                let client = client.read().await;
-                                if client.is_inactive(inactivity_limit) {
-                                    clients_to_remove.push(*client_id);
-                                }
+                        // Identify inactive clients
+                        for entry in clients.iter() {
+                            let client_id = *entry.key();
+                            let client = entry.value();
+                            if client.is_inactive(inactivity_limit) {
+                                clients_to_remove.push(client_id);
                             }
                         }
 
@@ -200,10 +197,7 @@ where
                     Some(io) = new_client_rx.recv() => {
                         let client = Sv2ServerServiceClient::new(io.clone());
                         let client_id = client_id_generator.next();
-                        {
-                            let mut clients_guard = clients.write().await;
-                            clients_guard.insert(client_id, Arc::new(RwLock::new(client)));
-                        }
+                        clients.insert(client_id, Arc::new(client));
                         debug!("added new client with id: {}", client_id);
 
                         // Spawn a task to handle incoming messages from this client
@@ -332,17 +326,20 @@ where
 
         // todo: remove client from other subprotocols
 
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.get_mut(&client_id) {
-            client.read().await.io.shutdown();
+        if let Some((_, client)) = self.clients.remove(&client_id) {
+            client.io.shutdown();
         }
-        clients.remove(&client_id);
     }
 
     async fn remove_all_clients(&mut self) {
-        let mut clients = self.clients.write().await;
-        for (client_id, client) in clients.drain() {
-            client.read().await.io.shutdown();
+        let client_entries: Vec<_> = self
+            .clients
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect();
+
+        for (client_id, client) in client_entries {
+            client.io.shutdown();
 
             if !Self::has_null_handler(Protocol::MiningProtocol) {
                 self.mining_handler.remove_client(client_id).await;
@@ -350,6 +347,8 @@ where
 
             // todo: remove client from other subprotocols
         }
+
+        self.clients.clear();
     }
 
     fn has_null_handler(protocol: Protocol) -> bool {
@@ -396,30 +395,23 @@ where
     }
 
     /// Returns `Some` if there is an active [`client::Sv2ServerServiceClient`] on the requested index, `None` otherwise.
-    pub async fn get_client(&self, client_id: u32) -> Option<Sv2ServerServiceClient> {
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&client_id) {
-            let client = client.write().await;
-            Some(client.clone())
-        } else {
-            None
-        }
+    pub fn get_client(&self, client_id: u32) -> Option<Arc<Sv2ServerServiceClient>> {
+        self.clients.get(&client_id).map(|entry| entry.clone())
     }
 
     /// Returns how many [`client::Sv2ServerServiceClient`] are active.
-    pub async fn get_client_count(&self) -> usize {
-        self.clients.read().await.len()
+    pub fn get_client_count(&self) -> usize {
+        self.clients.len()
     }
 
     /// Updates the last message time for a given client
-    pub async fn update_client_message_time(&self, client_id: u32) -> bool {
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&client_id) {
-            let mut client = client.write().await;
-            client.update_last_message_time();
-            return true;
+    pub fn update_client_message_time(&self, client_id: u32) -> bool {
+        if let Some(client_entry) = self.clients.get(&client_id) {
+            client_entry.update_last_message_time();
+            true
+        } else {
+            false
         }
-        false
     }
 
     /// The core logic for handling a [`SetupConnection`] request:
@@ -546,10 +538,8 @@ where
             device_id: req.device_id,
         };
 
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.get_mut(&client_id) {
-            let mut client = client.write().await;
-            client.connection = Some(connection);
+        if let Some(client_entry) = self.clients.get(&client_id) {
+            *client_entry.connection.write().await = Some(connection);
         } else {
             return Err(RequestToSv2ServerError::IdNotFound);
         }
@@ -587,11 +577,8 @@ where
 
     /// Add a client to the service (for testing purposes)
     #[cfg(test)]
-    pub async fn add_client(&mut self, client_id: u32, client: Sv2ServerServiceClient) {
-        self.clients
-            .write()
-            .await
-            .insert(client_id, Arc::new(RwLock::new(client)));
+    pub fn add_client(&mut self, client_id: u32, client: Sv2ServerServiceClient) {
+        self.clients.insert(client_id, Arc::new(client));
     }
 }
 
@@ -646,7 +633,7 @@ where
             // Extract client_id if available and update message time
             if let RequestToSv2Server::IncomingMessage(sv2_message) = &req {
                 if let Some(client_id) = sv2_message.client_id {
-                    this.update_client_message_time(client_id).await;
+                    this.update_client_message_time(client_id);
                 }
             }
 
@@ -863,15 +850,11 @@ where
                     let client_id = sv2_messages_to_client.client_id;
 
                     // Get the client's IO from the map
-                    let io = {
-                        let clients = this.clients.read().await;
-                        if let Some(client) = clients.get(&client_id) {
-                            let client = client.read().await;
-                            client.io.clone()
-                        } else {
-                            error!("Client not found in Sv2ServerService");
-                            return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
-                        }
+                    let io = if let Some(client) = this.clients.get(&client_id) {
+                        client.io.clone()
+                    } else {
+                        error!("Client not found in Sv2ServerService");
+                        return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
                     };
 
                     let messages = sv2_messages_to_client.messages;
@@ -897,15 +880,11 @@ where
                         let client_id = sv2_messages_to_client.client_id;
 
                         // Get the client's IO from the map
-                        let io = {
-                            let clients = this.clients.read().await;
-                            if let Some(client) = clients.get(&client_id) {
-                                let client = client.read().await;
-                                client.io.clone()
-                            } else {
-                                error!("Client not found in Sv2ServerService");
-                                return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
-                            }
+                        let io = if let Some(client) = this.clients.get(&client_id) {
+                            client.io.clone()
+                        } else {
+                            error!("Client not found in Sv2ServerService");
+                            return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
                         };
 
                         for message in sv2_messages_to_client.messages.clone() {
@@ -1075,11 +1054,11 @@ mod tests {
         }
 
         // Verify that the client was added to the service
-        assert_eq!(sv2_server_service.get_client_count().await, 1);
+        assert_eq!(sv2_server_service.get_client_count(), 1);
 
         // Verify that the client's connection details were set correctly
-        let client = sv2_server_service.get_client(1).await.unwrap();
-        let connection = client.connection.unwrap();
+        let client = sv2_server_service.get_client(1).unwrap();
+        let connection = client.connection.read().await.clone().unwrap();
         assert_eq!(connection.protocol, setup_connection_ok.protocol);
         assert_eq!(connection.min_version, setup_connection_ok.min_version);
         assert_eq!(connection.max_version, setup_connection_ok.max_version);
@@ -1097,7 +1076,7 @@ mod tests {
         // sleep to trigger removal of connection due to inactivity (limit is 1s)
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1187,7 +1166,7 @@ mod tests {
         let _response_2 = client_2.io.rx.recv().await.unwrap();
 
         // Verify that the clients were added to the service
-        assert_eq!(sv2_server_service.get_client_count().await, 2);
+        assert_eq!(sv2_server_service.get_client_count(), 2);
     }
 
     #[tokio::test]
@@ -1296,7 +1275,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1450,7 +1429,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1559,7 +1538,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[test]
@@ -1669,13 +1648,13 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Verify initial state
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
 
         // Shutdown the server
         cancellation_token.cancel();
 
         // Verify final state
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1762,7 +1741,7 @@ mod tests {
             .unwrap();
 
         // Verify both clients are connected
-        let client_count = sv2_server_service.get_client_count().await;
+        let client_count = sv2_server_service.get_client_count();
         assert_eq!(client_count, 2);
 
         cancellation_token.cancel();

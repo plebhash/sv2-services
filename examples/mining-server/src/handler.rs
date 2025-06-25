@@ -1,4 +1,5 @@
 use anyhow::Result;
+use dashmap::DashMap;
 use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B032;
 use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256;
 use stratum_common::roles_logic_sv2::mining_sv2::{
@@ -8,9 +9,7 @@ use stratum_common::roles_logic_sv2::mining_sv2::{
 };
 use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining};
 use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tower_stratum::server::service::client::Sv2MessagesToClient;
 use tower_stratum::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
 use tower_stratum::server::service::response::ResponseFromSv2Server;
@@ -22,7 +21,7 @@ use std::task::{Context, Poll};
 use tracing::info;
 #[derive(Debug, Clone, Default)]
 pub struct MyMiningServerHandler {
-    clients: Arc<RwLock<HashMap<u32, MyMiningServerClient>>>,
+    clients: Arc<DashMap<u32, MyMiningServerClient>>,
 }
 
 impl Sv2MiningServerHandler for MyMiningServerHandler {
@@ -44,14 +43,12 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
     async fn add_client(&mut self, client_id: u32, flags: u32) {
         info!("adding client with id: {}, flags: {}", client_id, flags);
         self.clients
-            .write()
-            .await
             .insert(client_id, MyMiningServerClient { _flags: flags });
     }
 
     async fn remove_client(&mut self, client_id: u32) {
         info!("removing client with id: {}", client_id);
-        self.clients.write().await.remove(&client_id);
+        self.clients.remove(&client_id);
     }
 
     async fn handle_open_standard_mining_channel(

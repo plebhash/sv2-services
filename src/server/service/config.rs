@@ -1,6 +1,6 @@
 use key_utils::{Secp256k1PublicKey, Secp256k1SecretKey};
-use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 use std::net::SocketAddr;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 
 /// Config parameters for a [`crate::server::service::Sv2ServerService`]
 /// Support for the Mining, Job Declaration and Template Distribution subprotocols is indicated by the presence of the corresponding config fields.

@@ -1,5 +1,5 @@
-use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 use std::fmt;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
 
 /// Errors that can occur when working with the Sv2ServerService.
 #[derive(Debug)]

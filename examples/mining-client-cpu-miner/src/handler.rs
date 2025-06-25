@@ -1,11 +1,11 @@
 use crate::client::format_number_with_underscores;
+use dashmap::DashMap;
 use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,
     SubmitSharesError, SubmitSharesSuccess, UpdateChannelError,
 };
-use std::collections::HashMap;
 use std::task::{Context, Poll};
 use tower_stratum::client::service::request::RequestToSv2Client;
 use tower_stratum::client::service::request::RequestToSv2ClientError;
@@ -30,8 +30,8 @@ pub struct MyMiningClientHandler {
     nominal_hashrate: f32,
     n_extended_channels: u8,
     n_standard_channels: u8,
-    extended_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<ExtendedMiner>>>>>,
-    standard_channels: Arc<RwLock<HashMap<u32, Arc<RwLock<StandardMiner>>>>>,
+    extended_channels: Arc<DashMap<u32, Arc<RwLock<ExtendedMiner>>>>,
+    standard_channels: Arc<DashMap<u32, Arc<RwLock<StandardMiner>>>>,
     request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
     cancellation_token: CancellationToken,
 }
@@ -50,12 +50,8 @@ impl MyMiningClientHandler {
             nominal_hashrate,
             n_extended_channels,
             n_standard_channels,
-            extended_channels: Arc::new(RwLock::new(HashMap::with_capacity(
-                n_extended_channels as usize,
-            ))),
-            standard_channels: Arc::new(RwLock::new(HashMap::with_capacity(
-                n_standard_channels as usize,
-            ))),
+            extended_channels: Arc::new(DashMap::with_capacity(n_extended_channels as usize)),
+            standard_channels: Arc::new(DashMap::with_capacity(n_standard_channels as usize)),
             request_injector,
             cancellation_token,
         }
@@ -127,9 +123,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32,
         );
 
-        let mut standard_channels = self.standard_channels.write().await;
-
-        standard_channels.insert(
+        self.standard_channels.insert(
             open_standard_mining_channel_success.channel_id,
             Arc::new(RwLock::new(StandardMiner::new(
                 standard_channel.clone(),
@@ -164,9 +158,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             open_extended_mining_channel_success.extranonce_size,
         );
 
-        let mut extended_channels = self.extended_channels.write().await;
-
-        extended_channels.insert(
+        self.extended_channels.insert(
             open_extended_mining_channel_success.channel_id,
             Arc::new(RwLock::new(ExtendedMiner::new(
                 extended_channel.clone(),
@@ -205,14 +197,15 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("Received CloseChannel: {:?}", close_channel);
 
-        let mut standard_channels = self.standard_channels.write().await;
-        let mut extended_channels = self.extended_channels.write().await;
-
-        let has_standard_channel = standard_channels.contains_key(&close_channel.channel_id);
-        let has_extended_channel = extended_channels.contains_key(&close_channel.channel_id);
+        let has_standard_channel = self
+            .standard_channels
+            .contains_key(&close_channel.channel_id);
+        let has_extended_channel = self
+            .extended_channels
+            .contains_key(&close_channel.channel_id);
 
         if has_standard_channel {
-            standard_channels.remove(&close_channel.channel_id);
+            self.standard_channels.remove(&close_channel.channel_id);
             info!(
                 "Removed Standard Channel with ID: {:?}",
                 close_channel.channel_id
@@ -220,7 +213,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_extended_channel {
-            extended_channels.remove(&close_channel.channel_id);
+            self.extended_channels.remove(&close_channel.channel_id);
             info!(
                 "Removed Extended Channel with ID: {:?}",
                 close_channel.channel_id
@@ -243,20 +236,19 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("received SetExtranoncePrefix: {:?}", set_extranonce_prefix);
 
-        let standard_channels = self.standard_channels.read().await;
-        let extended_channels = self.extended_channels.read().await;
-
-        let has_standard_channel =
-            standard_channels.contains_key(&set_extranonce_prefix.channel_id);
-        let has_extended_channel =
-            extended_channels.contains_key(&set_extranonce_prefix.channel_id);
+        let has_standard_channel = self
+            .standard_channels
+            .contains_key(&set_extranonce_prefix.channel_id);
+        let has_extended_channel = self
+            .extended_channels
+            .contains_key(&set_extranonce_prefix.channel_id);
 
         if has_standard_channel {
-            let mut standard_channel = standard_channels
+            let standard_channel_ref = self
+                .standard_channels
                 .get(&set_extranonce_prefix.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut standard_channel = standard_channel_ref.write().await;
 
             match standard_channel
                 .set_extranonce_prefix(set_extranonce_prefix.extranonce_prefix.to_vec())
@@ -278,11 +270,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_extended_channel {
-            let mut extended_channel = extended_channels
+            let extended_channel_ref = self
+                .extended_channels
                 .get(&set_extranonce_prefix.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut extended_channel = extended_channel_ref.write().await;
 
             match extended_channel
                 .set_extranonce_prefix(set_extranonce_prefix.extranonce_prefix.to_vec())
@@ -335,9 +327,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("Received NewMiningJob: {:?}", new_mining_job);
 
-        let standard_channels = self.standard_channels.read().await;
-
-        let has_standard_channel = standard_channels.contains_key(&new_mining_job.channel_id);
+        let has_standard_channel = self
+            .standard_channels
+            .contains_key(&new_mining_job.channel_id);
 
         if !has_standard_channel {
             error!(
@@ -345,11 +337,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 new_mining_job.channel_id
             );
         } else {
-            let mut standard_channel = standard_channels
+            let standard_channel_ref = self
+                .standard_channels
                 .get(&new_mining_job.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut standard_channel = standard_channel_ref.write().await;
             standard_channel
                 .on_new_mining_job(new_mining_job.clone().into_static())
                 .await;
@@ -371,10 +363,9 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             new_extended_mining_job
         );
 
-        let extended_channels = self.extended_channels.read().await;
-
-        let has_extended_channel =
-            extended_channels.contains_key(&new_extended_mining_job.channel_id);
+        let has_extended_channel = self
+            .extended_channels
+            .contains_key(&new_extended_mining_job.channel_id);
 
         if !has_extended_channel {
             error!(
@@ -382,11 +373,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 new_extended_mining_job.channel_id
             );
         } else {
-            let mut extended_channel = extended_channels
+            let extended_channel_ref = self
+                .extended_channels
                 .get(&new_extended_mining_job.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut extended_channel = extended_channel_ref.write().await;
             extended_channel
                 .on_new_extended_mining_job(new_extended_mining_job.clone().into_static())
                 .await;
@@ -406,11 +397,12 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("Received SetNewPrevHash: {:?}", set_new_prev_hash);
 
-        let standard_channels = self.standard_channels.read().await;
-        let extended_channels = self.extended_channels.read().await;
-
-        let has_standard_channel = standard_channels.contains_key(&set_new_prev_hash.channel_id);
-        let has_extended_channel = extended_channels.contains_key(&set_new_prev_hash.channel_id);
+        let has_standard_channel = self
+            .standard_channels
+            .contains_key(&set_new_prev_hash.channel_id);
+        let has_extended_channel = self
+            .extended_channels
+            .contains_key(&set_new_prev_hash.channel_id);
 
         if !has_standard_channel && !has_extended_channel {
             error!(
@@ -420,11 +412,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_standard_channel {
-            let mut standard_channel = standard_channels
+            let standard_channel_ref = self
+                .standard_channels
                 .get(&set_new_prev_hash.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut standard_channel = standard_channel_ref.write().await;
 
             match standard_channel
                 .on_set_new_prev_hash(set_new_prev_hash.clone().into_static())
@@ -446,11 +438,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_extended_channel {
-            let mut extended_channel = extended_channels
+            let extended_channel_ref = self
+                .extended_channels
                 .get(&set_new_prev_hash.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut extended_channel = extended_channel_ref.write().await;
 
             match extended_channel
                 .on_set_new_prev_hash(set_new_prev_hash.clone().into_static())
@@ -494,11 +486,8 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         info!("Received SetTarget: {:?}", set_target);
 
-        let standard_channels = self.standard_channels.read().await;
-        let extended_channels = self.extended_channels.read().await;
-
-        let has_standard_channel = standard_channels.contains_key(&set_target.channel_id);
-        let has_extended_channel = extended_channels.contains_key(&set_target.channel_id);
+        let has_standard_channel = self.standard_channels.contains_key(&set_target.channel_id);
+        let has_extended_channel = self.extended_channels.contains_key(&set_target.channel_id);
 
         if !has_standard_channel && !has_extended_channel {
             error!(
@@ -508,11 +497,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_standard_channel {
-            let mut standard_channel = standard_channels
+            let standard_channel_ref = self
+                .standard_channels
                 .get(&set_target.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut standard_channel = standard_channel_ref.write().await;
 
             standard_channel
                 .set_target(set_target.maximum_target.clone().into())
@@ -524,11 +513,11 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
         }
 
         if has_extended_channel {
-            let mut extended_channel = extended_channels
+            let extended_channel_ref = self
+                .extended_channels
                 .get(&set_target.channel_id)
-                .expect("channel id must exist")
-                .write()
-                .await;
+                .expect("channel id must exist");
+            let mut extended_channel = extended_channel_ref.write().await;
 
             extended_channel
                 .set_target(set_target.maximum_target.into())
