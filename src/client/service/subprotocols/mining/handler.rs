@@ -1,7 +1,7 @@
 use crate::client::service::request::RequestToSv2ClientError;
 use crate::client::service::response::ResponseFromSv2Client;
 
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,
@@ -14,106 +14,112 @@ use std::task::{Context, Poll};
 pub trait Sv2MiningClientHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>>;
 
+    fn start(
+        &mut self,
+    ) -> impl std::future::Future<
+        Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
+    > + Send;
+
     fn handle_open_standard_mining_channel_success(
-        &self,
+        &mut self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_open_extended_mining_channel_success(
-        &self,
+        &mut self,
         open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_open_mining_channel_error(
-        &self,
+        &mut self,
         open_mining_channel_error: OpenMiningChannelError<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_update_channel_error(
-        &self,
+        &mut self,
         update_channel_error: UpdateChannelError<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_close_channel(
-        &self,
+        &mut self,
         close_channel: CloseChannel<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_extranonce_prefix(
-        &self,
+        &mut self,
         set_extranonce_prefix: SetExtranoncePrefix<'static>,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_submit_shares_success(
-        &self,
+        &mut self,
         submit_shares_success: SubmitSharesSuccess,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_submit_shares_error(
-        &self,
+        &mut self,
         submit_shares_error: SubmitSharesError,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_new_mining_job(
-        &self,
+        &mut self,
         new_mining_job: NewMiningJob,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_new_extended_mining_job(
-        &self,
+        &mut self,
         new_extended_mining_job: NewExtendedMiningJob,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_new_prev_hash(
-        &self,
+        &mut self,
         set_new_prev_hash: SetNewPrevHash,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_custom_mining_job_success(
-        &self,
+        &mut self,
         set_custom_mining_job_success: SetCustomMiningJobSuccess,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_custom_mining_job_error(
-        &self,
+        &mut self,
         set_custom_mining_job_error: SetCustomMiningJobError,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_target(
-        &self,
+        &mut self,
         set_target: SetTarget,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
     > + Send;
 
     fn handle_set_group_channel(
-        &self,
+        &mut self,
         set_group_channel: SetGroupChannel,
     ) -> impl std::future::Future<
         Output = Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError>,
@@ -136,43 +142,47 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
         unimplemented!("NullSv2TemplateDistributionClientHandler does not implement poll_ready");
     }
 
+    async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+        unimplemented!("NullSv2MiningClientHandler does not implement start");
+    }
+
     async fn handle_open_standard_mining_channel_success(
-        &self,
+        &mut self,
         _open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_open_standard_mining_channel_success");
     }
 
     async fn handle_open_extended_mining_channel_success(
-        &self,
+        &mut self,
         _open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_open_extended_mining_channel_success");
     }
 
     async fn handle_open_mining_channel_error(
-        &self,
+        &mut self,
         _open_standard_mining_channel_error: OpenMiningChannelError<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_open_standard_mining_channel_error");
     }
 
     async fn handle_update_channel_error(
-        &self,
+        &mut self,
         _update_channel_error: UpdateChannelError<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_update_channel_error");
     }
 
     async fn handle_close_channel(
-        &self,
+        &mut self,
         _close_channel: CloseChannel<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_close_channel");
     }
 
     async fn handle_set_extranonce_prefix(
-        &self,
+        &mut self,
         _set_extranonce_prefix: SetExtranoncePrefix<'static>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!(
@@ -181,7 +191,7 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     }
 
     async fn handle_submit_shares_success(
-        &self,
+        &mut self,
         _submit_shares_success: SubmitSharesSuccess,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!(
@@ -190,21 +200,21 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     }
 
     async fn handle_submit_shares_error(
-        &self,
+        &mut self,
         _submit_shares_error: SubmitSharesError<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_submit_shares_error");
     }
 
     async fn handle_new_mining_job(
-        &self,
+        &mut self,
         _new_mining_job: NewMiningJob<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_new_mining_job");
     }
 
     async fn handle_new_extended_mining_job(
-        &self,
+        &mut self,
         _new_extended_mining_job: NewExtendedMiningJob<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!(
@@ -213,14 +223,14 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     }
 
     async fn handle_set_new_prev_hash(
-        &self,
+        &mut self,
         _set_new_prev_hash: SetNewPrevHash<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_set_new_prev_hash");
     }
 
     async fn handle_set_custom_mining_job_success(
-        &self,
+        &mut self,
         _set_custom_mining_job_success: SetCustomMiningJobSuccess,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!(
@@ -229,7 +239,7 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     }
 
     async fn handle_set_custom_mining_job_error(
-        &self,
+        &mut self,
         _set_custom_mining_job_error: SetCustomMiningJobError<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!(
@@ -238,14 +248,14 @@ impl Sv2MiningClientHandler for NullSv2MiningClientHandler {
     }
 
     async fn handle_set_target(
-        &self,
+        &mut self,
         _set_target: SetTarget<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_set_target");
     }
 
     async fn handle_set_group_channel(
-        &self,
+        &mut self,
         _set_group_channel: SetGroupChannel<'_>,
     ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
         unimplemented!("NullSv2MiningClientHandler does not implement handle_set_group_channel");

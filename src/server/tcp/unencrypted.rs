@@ -1,6 +1,6 @@
-use network_helpers_sv2::plain_connection::PlainConnection;
-use roles_logic_sv2::parsers::AnyMessage;
 use std::net::SocketAddr;
+use stratum_common::network_helpers_sv2::plain_connection::PlainConnection;
+use stratum_common::roles_logic_sv2::parsers::AnyMessage;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -52,14 +52,18 @@ pub async fn start_unencrypted_tcp_server(
 mod tests {
     use crate::client::tcp::unencrypted::Sv2UnencryptedTcpClient;
     use crate::Sv2MessageFrame;
-    use const_sv2::{MESSAGE_TYPE_SETUP_CONNECTION, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS};
-    use framing_sv2::framing::Sv2Frame;
     use once_cell::sync::Lazy;
-    use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection, SetupConnectionSuccess};
-    use roles_logic_sv2::parsers::AnyMessage;
     use std::collections::HashSet;
     use std::net::{SocketAddr, TcpListener};
     use std::sync::Mutex;
+    use stratum_common::roles_logic_sv2::codec_sv2::framing_sv2::framing::Sv2Frame;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::{
+        Protocol, SetupConnection, SetupConnectionSuccess,
+    };
+    use stratum_common::roles_logic_sv2::common_messages_sv2::{
+        MESSAGE_TYPE_SETUP_CONNECTION, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
+    };
+    use stratum_common::roles_logic_sv2::parsers::AnyMessage;
     use tokio::sync::broadcast;
     use tokio::sync::mpsc;
 

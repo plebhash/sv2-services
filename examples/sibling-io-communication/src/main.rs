@@ -2,14 +2,12 @@ use anyhow::Ok;
 use integration_tests_sv2::start_template_provider;
 use mining_server_handler::MyMiningServerHandler;
 use template_distribution_handler::MyTemplateDistributionHandler;
+use tokio_util::sync::CancellationToken;
 use tower_stratum::{
     client::service::{
-        Sv2ClientService, request::RequestToSv2Client,
-        subprotocols::mining::handler::NullSv2MiningClientHandler,
-        subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService,
+        Sv2ClientService, subprotocols::mining::handler::NullSv2MiningClientHandler,
     },
     server::service::Sv2ServerService,
-    tower::Service,
 };
 use tracing::info;
 mod configs;
@@ -49,8 +47,25 @@ async fn main() -> anyhow::Result<()> {
     info!("Template Provider address: {:?}", tp_address);
 
     // Initialize the handlers for TemplateDistribution and MiningServer.
-    let tdc_handler = MyTemplateDistributionHandler::default();
+    let tdc_handler = MyTemplateDistributionHandler::new(
+        config
+            .client_config
+            .template_distribution_config
+            .as_ref()
+            .unwrap()
+            .coinbase_output_constraints
+            .0,
+        config
+            .client_config
+            .template_distribution_config
+            .as_ref()
+            .unwrap()
+            .coinbase_output_constraints
+            .1,
+    );
     let mining_handler = MyMiningServerHandler::default();
+
+    let cancellation_token = CancellationToken::new();
 
     // Create the Sv2ServerService and Sv2ClientService using the handlers.
 
@@ -59,56 +74,47 @@ async fn main() -> anyhow::Result<()> {
     let (
         mut server_service,
         sibling_server_io, // <----- SiblingIO is created here.
-    ) = Sv2ServerService::new_with_sibling_io(config.server_config, mining_handler).unwrap();
+    ) = Sv2ServerService::new_with_sibling_io(
+        config.server_config,
+        mining_handler,
+        cancellation_token.clone(),
+    )
+    .unwrap();
 
     // Create the client service that communicates with the server using the `sibling_server_io` created above.
     let client_config = config.client_config.clone();
-    let mut client_service = Sv2ClientService::new_with_sibling_io(
+    let mut client_service = Sv2ClientService::new_from_sibling_io(
         client_config,
         NullSv2MiningClientHandler,
         tdc_handler,
         sibling_server_io, // <----- SiblingIO is passed here.
+        cancellation_token.clone(),
     )?;
 
-    // Start the server and client services.
-    server_service.start().await?;
-    client_service.start().await?;
-
-    // Once the connection is established, set the coinbase constraints with the Template Provider.
-    // This step is necessary to start receiving new templates.
-    client_service
-        .call(RequestToSv2Client::TemplateDistributionTrigger(
-            RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
-                config
-                    .client_config
-                    .template_distribution_config
-                    .as_ref()
-                    .unwrap()
-                    .coinbase_output_constraints
-                    .0,
-                config
-                    .client_config
-                    .template_distribution_config
-                    .as_ref()
-                    .unwrap()
-                    .coinbase_output_constraints
-                    .1,
-            ),
-        ))
-        .await
-        .unwrap();
+    // Use tokio::select to wait for either client or server completion or Ctrl+C
+    tokio::select! {
+        result = server_service.start() => {
+            if let Err(e) = result {
+                tracing::error!("Server error: {}", e);
+            }
+        }
+        result = client_service.start() => {
+            if let Err(e) = result {
+                tracing::error!("Client error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+    }
 
     // At this point, the client starts receiving new templates from the Template Provider.
     // These templates are sent to the MiningServer via SiblingIO.
     // Check the handlers to see how the messages are passed.
     // Logs are printed in the handlers for debugging and monitoring.
 
-    // Wait for a Ctrl-C signal to terminate the application.
-    tokio::signal::ctrl_c().await?;
-
     // Shutdown the server and client services gracefully.
-    server_service.shutdown().await;
-    client_service.shutdown().await;
+    cancellation_token.cancel();
     info!("Server and Client services shutdown");
 
     Ok(())

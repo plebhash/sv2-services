@@ -1,6 +1,6 @@
-use network_helpers_sv2::plain_connection::PlainConnection;
-use roles_logic_sv2::parsers::AnyMessage;
 use std::net::SocketAddr;
+use stratum_common::network_helpers_sv2::plain_connection::PlainConnection;
+use stratum_common::roles_logic_sv2::parsers::AnyMessage;
 use tokio::net::TcpStream;
 
 use crate::Sv2MessageIo;

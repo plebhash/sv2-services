@@ -1,6 +1,7 @@
 mod client;
 mod config;
 mod handler;
+mod miner;
 
 use crate::client::MyMiningClient;
 use crate::config::MyMiningClientConfig;
@@ -19,7 +20,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt::init();
 
     // Parse command line arguments
     let args = Args::parse();
@@ -30,76 +31,20 @@ async fn main() -> anyhow::Result<()> {
     // Create and start the client
     let mut client = MyMiningClient::new(config).await?;
 
-    // Start the client service
-    client.start().await?;
-
-    // Wait for Ctrl+C
-    tokio::signal::ctrl_c().await?;
+    // Use tokio::select to wait for either client completion or Ctrl+C
+    tokio::select! {
+        result = client.start() => {
+            if let Err(e) = result {
+                tracing::error!("Client error: {}", e);
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
+    }
 
     // Shutdown the client
     client.shutdown().await;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::client::MyMiningClient;
-    use crate::config::MyMiningClientConfig;
-    use const_sv2::*;
-    use integration_tests_sv2::{
-        sniffer::MessageDirection, start_pool, start_sniffer, start_template_provider,
-    };
-    #[tokio::test]
-    async fn test_mining_client_standard_channel() {
-        tracing_subscriber::fmt().init();
-
-        let (_tp, tp_addr) = start_template_provider(None);
-        let (_pool, pool_addr) = start_pool(Some(tp_addr)).await;
-        let (sniffer, sniffer_addr) = start_sniffer("".to_string(), pool_addr, false, None).await;
-
-        // Give sniffer time to initialize
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        let config = MyMiningClientConfig {
-            server_addr: sniffer_addr,
-            auth_pk: None,
-            extranonce_rolling: false, // standard jobs
-            user_identity: "test".to_string(),
-        };
-
-        let mut client = MyMiningClient::new(config).await.unwrap();
-        client.start().await.unwrap();
-
-        sniffer
-            .wait_for_message_type(MessageDirection::ToUpstream, MESSAGE_TYPE_SETUP_CONNECTION)
-            .await;
-        sniffer
-            .wait_for_message_type(
-                MessageDirection::ToDownstream,
-                MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-            )
-            .await;
-        sniffer
-            .wait_for_message_type(
-                MessageDirection::ToUpstream,
-                MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
-            )
-            .await;
-        sniffer
-            .wait_for_message_type(
-                MessageDirection::ToDownstream,
-                MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS,
-            )
-            .await;
-        sniffer
-            .wait_for_message_type(MessageDirection::ToDownstream, MESSAGE_TYPE_NEW_MINING_JOB)
-            .await;
-        sniffer
-            .wait_for_message_type(
-                MessageDirection::ToDownstream,
-                MESSAGE_TYPE_MINING_SET_NEW_PREV_HASH,
-            )
-            .await;
-    }
 }

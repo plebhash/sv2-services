@@ -2,14 +2,17 @@ use crate::config::MyMiningServerConfig;
 use crate::handler::MyMiningServerHandler;
 use anyhow::Result;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use tokio_util::sync::CancellationToken;
 use tower_stratum::server::service::Sv2ServerService;
 use tower_stratum::server::service::config::Sv2ServerServiceConfig;
 use tower_stratum::server::service::config::Sv2ServerServiceMiningConfig;
 use tower_stratum::server::service::config::Sv2ServerTcpConfig;
 use tracing::info;
 
+#[derive(Clone)]
 pub struct MyMiningServer {
     sv2_server_service: Sv2ServerService<MyMiningServerHandler>,
+    cancellation_token: CancellationToken,
 }
 
 impl MyMiningServer {
@@ -36,9 +39,17 @@ impl MyMiningServer {
             template_distribution_config: None,
         };
 
-        let sv2_server_service =
-            Sv2ServerService::new(service_config, MyMiningServerHandler::default())?;
-        Ok(MyMiningServer { sv2_server_service })
+        let cancellation_token = CancellationToken::new();
+
+        let sv2_server_service = Sv2ServerService::new(
+            service_config,
+            MyMiningServerHandler::default(),
+            cancellation_token.clone(),
+        )?;
+        Ok(MyMiningServer {
+            sv2_server_service,
+            cancellation_token,
+        })
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -48,7 +59,7 @@ impl MyMiningServer {
     }
 
     pub async fn shutdown(&mut self) {
-        self.sv2_server_service.shutdown().await;
+        self.cancellation_token.cancel();
         info!("Mining server shutdown complete");
     }
 }

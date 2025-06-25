@@ -1,20 +1,18 @@
 use anyhow::Result;
-use binary_sv2::B032;
-use binary_sv2::U256;
-use const_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS;
-use roles_logic_sv2::mining_sv2::{
+use dashmap::DashMap;
+use std::sync::Arc;
+use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B032;
+use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256;
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel,
     OpenStandardMiningChannelSuccess, SetCustomMiningJob, SubmitSharesExtended,
     SubmitSharesStandard, UpdateChannel,
 };
-use roles_logic_sv2::parsers::{AnyMessage, Mining};
-use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use tower_stratum::server::service::request::RequestToSv2ServerError;
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use tower_stratum::server::service::client::Sv2MessagesToClient;
+use tower_stratum::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
 use tower_stratum::server::service::response::ResponseFromSv2Server;
-use tower_stratum::server::service::response::Sv2MessageToClient;
 use tower_stratum::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
 
 use crate::client::MyMiningServerClient;
@@ -23,13 +21,20 @@ use std::task::{Context, Poll};
 use tracing::info;
 #[derive(Debug, Clone, Default)]
 pub struct MyMiningServerHandler {
-    clients: Arc<RwLock<HashMap<u32, MyMiningServerClient>>>,
+    clients: Arc<DashMap<u32, MyMiningServerClient>>,
 }
 
 impl Sv2MiningServerHandler for MyMiningServerHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>> {
         Poll::Ready(Ok(()))
     }
+
+    async fn start(&mut self) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+        Ok(ResponseFromSv2Server::Ok)
+    }
+
+    // no spawned tasks, therefore empty shutdown method
+    async fn shutdown(&mut self) {}
 
     fn setup_connection_success_flags(&self) -> u32 {
         0
@@ -38,20 +43,12 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
     async fn add_client(&mut self, client_id: u32, flags: u32) {
         info!("adding client with id: {}, flags: {}", client_id, flags);
         self.clients
-            .write()
-            .await
             .insert(client_id, MyMiningServerClient { _flags: flags });
     }
 
     async fn remove_client(&mut self, client_id: u32) {
         info!("removing client with id: {}", client_id);
-        self.clients.write().await.remove(&client_id);
-    }
-
-    async fn remove_all_clients(&mut self) {
-        let num_clients = self.clients.read().await.len();
-        info!("removing all {} clients", num_clients);
-        self.clients.write().await.clear();
+        self.clients.remove(&client_id);
     }
 
     async fn handle_open_standard_mining_channel(
@@ -81,24 +78,25 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
 
         // todo: update some actual state on the server representing this new standard mining channel
 
-        let message = Sv2MessageToClient {
+        let message = Sv2MessagesToClient {
             client_id,
-            message: AnyMessage::Mining(Mining::OpenStandardMiningChannelSuccess(
-                OpenStandardMiningChannelSuccess {
+            messages: vec![AnyMessage::Mining(
+                Mining::OpenStandardMiningChannelSuccess(OpenStandardMiningChannelSuccess {
                     request_id,
                     channel_id: 0,
                     target,
                     extranonce_prefix,
                     group_channel_id: 0,
-                },
-            )),
-            message_type: MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL_SUCCESS,
+                }),
+            )],
         };
         info!(
             "sending OpenStandardMiningChannelSuccess to client with id: {}",
             client_id
         );
-        Ok(ResponseFromSv2Server::SendReplyToClient(Box::new(message)))
+        Ok(ResponseFromSv2Server::TriggerNewRequest(Box::new(
+            RequestToSv2Server::SendMessagesToClient(Box::new(message)),
+        )))
     }
 
     async fn handle_open_extended_mining_channel(

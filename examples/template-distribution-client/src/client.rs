@@ -1,20 +1,18 @@
 use crate::config::MyTemplateDistributionClientConfig;
 use crate::handler::MyTemplateDistributionHandler;
 use anyhow::{Result, anyhow};
-use tower::{Service, ServiceExt};
+use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
 use tower_stratum::client::service::Sv2ClientService;
 use tower_stratum::client::service::config::Sv2ClientServiceConfig;
 use tower_stratum::client::service::config::Sv2ClientServiceTemplateDistributionConfig;
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::client::service::response::ResponseFromSv2Client;
 use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
-use tower_stratum::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
 use tracing::info;
 
+#[derive(Clone)]
 pub struct MyTemplateDistributionClient {
     sv2_client_service: Sv2ClientService<NullSv2MiningClientHandler, MyTemplateDistributionHandler>,
-    coinbase_output_max_additional_size: u32,
-    coinbase_output_max_additional_sigops: u16,
+    cancellation_token: CancellationToken,
 }
 
 impl MyTemplateDistributionClient {
@@ -42,20 +40,25 @@ impl MyTemplateDistributionClient {
         };
 
         // Create the handler instance
-        let template_distribution_handler = MyTemplateDistributionHandler::default();
+        let template_distribution_handler = MyTemplateDistributionHandler::new(
+            config.coinbase_output_max_additional_size,
+            config.coinbase_output_max_additional_sigops,
+        );
+
+        let cancellation_token = CancellationToken::new();
 
         // Initialize the service with config and handler
         let sv2_client_service = Sv2ClientService::new(
             service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .map_err(|e| anyhow!("Failed to create Sv2ClientService: {:?}", e))?;
 
         Ok(Self {
             sv2_client_service,
-            coinbase_output_max_additional_size: config.coinbase_output_max_additional_size,
-            coinbase_output_max_additional_sigops: config.coinbase_output_max_additional_sigops,
+            cancellation_token,
         })
     }
 
@@ -70,31 +73,11 @@ impl MyTemplateDistributionClient {
             .await
             .map_err(|e| anyhow!("Service is not ready: {:?}", e))?;
 
-        let set_coinbase_output_constraints_response = self
-            .sv2_client_service
-            .call(RequestToSv2Client::TemplateDistributionTrigger(
-                RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
-                    self.coinbase_output_max_additional_size,
-                    self.coinbase_output_max_additional_sigops,
-                ),
-            ))
-            .await
-            .map_err(|e| anyhow!("Failed to request coinbase output constraints: {:?}", e))?;
-
-        match set_coinbase_output_constraints_response {
-            ResponseFromSv2Client::Ok => {
-                info!("Coinbase output constraints set");
-            }
-            _ => {
-                return Err(anyhow!("Failed to set coinbase output constraints"));
-            }
-        }
-
         Ok(())
     }
 
     pub async fn shutdown(&mut self) {
         info!("Shutting down Template Distribution Client");
-        self.sv2_client_service.shutdown().await;
+        self.cancellation_token.cancel();
     }
 }

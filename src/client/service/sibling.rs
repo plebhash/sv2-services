@@ -37,4 +37,10 @@ impl Sv2SiblingServerServiceIo {
     pub async fn recv(&self) -> Result<Box<RequestToSv2Client<'static>>, async_channel::RecvError> {
         self.rx.recv().await
     }
+
+    /// Shutdown the sibling server service io.
+    pub fn shutdown(&self) {
+        self.tx.close();
+        self.rx.close();
+    }
 }

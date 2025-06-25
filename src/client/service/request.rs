@@ -1,9 +1,9 @@
-use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
-use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use crate::client::service::subprotocols::mining::trigger::MiningClientTrigger;
+use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::server::service::request::RequestToSv2Server;
 use crate::Sv2MessageIoError;
-use roles_logic_sv2::common_messages_sv2::Protocol;
-use roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining, TemplateDistribution};
 
 /// The request type for the [`crate::client::service::Sv2ClientService`] service.
 #[derive(Debug, Clone)]
@@ -12,11 +12,15 @@ pub enum RequestToSv2Client<'a> {
     SetupConnectionTrigger(Protocol, u32), // protocol, flags
     /// Some Sv2 message addressed to the client.
     /// Could belong to any subprotocol.
-    Message(AnyMessage<'a>),
-    MiningTrigger(RequestToSv2MiningClientService),
-    TemplateDistributionTrigger(RequestToSv2TemplateDistributionClientService<'a>),
-    /// The request is boxed to break the recursive type definition between RequestToSv2Client and RequestToSv2Server.
+    IncomingMessage(AnyMessage<'a>),
+    MiningTrigger(MiningClientTrigger),
+    TemplateDistributionTrigger(TemplateDistributionClientTrigger<'a>),
     SendRequestToSiblingServerService(Box<RequestToSv2Server<'a>>),
+    SendMessageToMiningServer(Box<Mining<'a>>),
+    SendMessageToTemplateDistributionServer(Box<TemplateDistribution<'a>>),
+    // SendMessageToJobDeclarationServer(Box<(JobDeclaration<'a>, u8)>),
+    /// Execute an ordered sequence of requests.
+    MultipleRequests(Box<Vec<RequestToSv2Client<'a>>>),
 }
 
 /// The error type for the [`crate::client::service::Sv2ClientService`] service.
@@ -32,6 +36,9 @@ pub enum RequestToSv2ClientError {
     NoSiblingServerServiceIo,
     FailedToSendRequestToSiblingServerService,
     U256ConversionError(String),
+    MiningHandlerError(String),
+    TemplateDistributionHandlerError(String),
+    JobDeclarationHandlerError(String),
 }
 
 impl From<Sv2MessageIoError> for RequestToSv2ClientError {

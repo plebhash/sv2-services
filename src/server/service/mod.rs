@@ -1,29 +1,29 @@
 use crate::client::service::sibling::Sv2SiblingServerServiceIo;
-use crate::server::service::client::Sv2ServerServiceClient;
+use crate::server::service::client::{Sv2MessagesToClient, Sv2ServerServiceClient};
 use crate::server::service::config::Sv2ServerServiceConfig;
 use crate::server::service::connection::Sv2ConnectionClient;
 use crate::server::service::error::Sv2ServerServiceError;
-use crate::server::service::request::{RequestToSv2Server, RequestToSv2ServerError};
+use crate::server::service::request::{
+    RequestToSv2Server, RequestToSv2ServerError, Sv2MessageToServer,
+};
 use crate::server::service::response::ResponseFromSv2Server;
-use crate::server::service::response::Sv2MessageToClient;
 use crate::server::service::sibling::Sv2SiblingClientServiceIo;
 use crate::server::service::subprotocols::mining::handler::NullSv2MiningServerHandler;
 use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
-use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use crate::server::tcp::encrypted::start_encrypted_tcp_server;
 use crate::server::ClientIdGenerator;
-use roles_logic_sv2::common_messages_sv2::{
-    Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
-};
-use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::{broadcast, RwLock};
-use tower::Service;
+use stratum_common::roles_logic_sv2::common_messages_sv2::{
+    Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
+};
+use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
+use tokio_util::sync::CancellationToken;
+use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
 pub mod client;
@@ -58,14 +58,13 @@ where
     M: Sv2MiningServerHandler + Clone + Send + Sync + 'static,
 {
     config: Sv2ServerServiceConfig,
-    clients: Arc<RwLock<HashMap<u32, Arc<RwLock<Sv2ServerServiceClient>>>>>,
+    clients: Arc<DashMap<u32, Arc<Sv2ServerServiceClient>>>,
     client_id_generator: ClientIdGenerator,
     mining_handler: M,
     // todo: job_declaration_handler: J,
     // todo: template_distribution_handler: T,
-    shutdown_tx: broadcast::Sender<()>,
-    alive: Arc<AtomicBool>,
     sibling_client_service_io: Option<Sv2SiblingClientServiceIo>,
+    cancellation_token: CancellationToken,
 }
 
 impl<M> Sv2ServerService<M>
@@ -80,8 +79,9 @@ where
         mining_handler: M,
         // todo: job_declaration_handler: J,
         // todo: template_distribution_handler: T,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ServerServiceError> {
-        let sv2_server_service = Self::_new(config, mining_handler, None)?;
+        let sv2_server_service = Self::_new(config, mining_handler, None, cancellation_token)?;
         Ok(sv2_server_service)
     }
 
@@ -91,11 +91,16 @@ where
     pub fn new_with_sibling_io(
         config: Sv2ServerServiceConfig,
         mining_handler: M,
+        cancellation_token: CancellationToken,
     ) -> Result<(Self, Sv2SiblingServerServiceIo), Sv2ServerServiceError> {
         let (sibling_client_service_io, sibling_server_service_io) =
             Sv2SiblingClientServiceIo::new();
-        let sv2_server_service =
-            Self::_new(config, mining_handler, Some(sibling_client_service_io))?;
+        let sv2_server_service = Self::_new(
+            config,
+            mining_handler,
+            Some(sibling_client_service_io),
+            cancellation_token,
+        )?;
         Ok((sv2_server_service, sibling_server_service_io))
     }
 
@@ -106,17 +111,17 @@ where
         // todo: job_declaration_handler: J,
         // todo: template_distribution_handler: T,
         sibling_client_service_io: Option<Sv2SiblingClientServiceIo>,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ServerServiceError> {
         Self::validate_protocol_handlers(&config)?;
 
         let sv2_server_service = Sv2ServerService {
             config: config.clone(),
-            clients: Arc::new(RwLock::new(HashMap::new())),
+            clients: Arc::new(DashMap::new()),
             client_id_generator: ClientIdGenerator::new(),
             mining_handler,
-            shutdown_tx: broadcast::channel(1).0,
-            alive: Arc::new(AtomicBool::new(false)),
             sibling_client_service_io,
+            cancellation_token,
         };
 
         Ok(sv2_server_service)
@@ -126,7 +131,7 @@ where
         // Create a channel for new client connections
         let (new_client_tx, mut new_client_rx) = tokio::sync::mpsc::channel(32);
 
-        let shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         start_encrypted_tcp_server(
             self.config.tcp_config.listen_address,
@@ -134,38 +139,33 @@ where
             self.config.tcp_config.priv_key,
             self.config.tcp_config.cert_validity,
             new_client_tx,
-            shutdown_rx.resubscribe(),
+            cancellation_token.clone(),
         )
         .await
         .map_err(|_e| Sv2ServerServiceError::TcpServerError)?;
 
         let clients = self.clients.clone();
         let inactivity_limit = self.config.inactivity_limit;
-        let alive = self.alive.clone();
         let mut this = self.clone();
 
-        // spawn a task to monitor for inactive connections and clean up the HashMap
+        // spawn a task to monitor for inactive connections and clean up the DashMap
         tokio::spawn(async move {
-            let mut shutdown_rx = shutdown_rx;
+            let cancellation_token = cancellation_token;
             loop {
                 tokio::select! {
-                    _ = shutdown_rx.recv() => {
-                        debug!("Inactive connection monitor received shutdown signal");
+                    _ = cancellation_token.cancelled() => {
+                        debug!("Inactive connection monitor task cancelled");
                         this.remove_all_clients().await;
-                        alive.store(false, Ordering::Relaxed);
                         break;
                     }
-                    // yield back to the tokio runtime
-                    _ = tokio::task::yield_now() => {
+                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
                         let mut clients_to_remove = Vec::new();
-                        {
-                            let clients_guard = clients.read().await;
-                            // Identify inactive clients
-                            for (client_id, client) in clients_guard.iter() {
-                                let client = client.read().await;
-                                if client.is_inactive(inactivity_limit) {
-                                    clients_to_remove.push(*client_id);
-                                }
+                        // Identify inactive clients
+                        for entry in clients.iter() {
+                            let client_id = *entry.key();
+                            let client = entry.value();
+                            if client.is_inactive(inactivity_limit) {
+                                clients_to_remove.push(client_id);
                             }
                         }
 
@@ -181,43 +181,40 @@ where
         });
 
         let service = self.clone();
-        let shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         // Spawn a task to handle new client connections
         let clients = self.clients.clone();
         let mut client_id_generator = self.client_id_generator.clone();
         tokio::spawn(async move {
-            let mut shutdown_rx = shutdown_rx;
+            let cancellation_token = cancellation_token;
             loop {
                 tokio::select! {
-                    _ = shutdown_rx.recv() => {
-                        debug!("New client connection handler task received shutdown signal");
+                    _ = cancellation_token.cancelled() => {
+                        debug!("New client connection handler task cancelled");
                         break;
                     }
                     Some(io) = new_client_rx.recv() => {
                         let client = Sv2ServerServiceClient::new(io.clone());
                         let client_id = client_id_generator.next();
-                        {
-                            let mut clients_guard = clients.write().await;
-                            clients_guard.insert(client_id, Arc::new(RwLock::new(client)));
-                        }
+                        clients.insert(client_id, Arc::new(client));
                         debug!("added new client with id: {}", client_id);
 
                         // Spawn a task to handle incoming messages from this client
                         let mut service = service.clone();
-                        let shutdown_rx = shutdown_rx.resubscribe();
+                        let cancellation_token = cancellation_token.clone();
                         tokio::spawn(async move {
-                            let mut shutdown_rx = shutdown_rx;
+                            let cancellation_token = cancellation_token;
                             loop {
                                 tokio::select! {
-                                    _ = shutdown_rx.recv() => {
-                                        debug!("Client {} message handler task received shutdown signal", client_id);
+                                    _ = cancellation_token.cancelled() => {
+                                        debug!("Client {} message handler task cancelled", client_id);
                                         break;
                                     }
                                     message_result = io.recv_message() => {
                                         match message_result {
-                                            Ok((message, _message_type)) => {
-                                                let request = RequestToSv2Server::Message(request::Sv2MessageToServer {
+                                            Ok(message) => {
+                                                let request = RequestToSv2Server::IncomingMessage(Sv2MessageToServer {
                                                     message,
                                                     client_id: Some(client_id),
                                                 });
@@ -241,30 +238,37 @@ where
                                 }
                             }
                             debug!("Client {} message handler task ended", client_id);
+                            service.remove_client(client_id).await;
                         });
                     }
                 }
             }
         });
 
-        let shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
         let mut service = self.clone();
 
         // spawn a task to route requests from the sibling client service
         if let Some(sibling_io) = service.sibling_client_service_io.clone() {
             tokio::spawn(async move {
-                let mut shutdown_rx = shutdown_rx;
+                let cancellation_token = cancellation_token;
 
                 loop {
                     tokio::select! {
-                        _ = shutdown_rx.recv() => {
-                            debug!("External mining trigger handler task received shutdown signal");
+                        _ = cancellation_token.cancelled() => {
+                            debug!("Sibling client service request monitor task cancelled");
                             break;
                         }
                         result = sibling_io.recv() => {
                             match result {
                                 Ok(req) => {
                                     debug!("Received request from sibling client service");
+
+                                    // Check if service is ready before processing the request
+                                    if let Err(e) = service.ready().await.map_err(|_| Sv2ServerServiceError::ServiceNotReady) {
+                                        error!("Service not ready, skipping request: {:?}", e);
+                                        continue;
+                                    }
 
                                     // Call the service with the request
                                     if let Err(e) = service.call(*req).await {
@@ -281,11 +285,38 @@ where
                         }
                     }
                 }
+                debug!("Sibling client service request monitor task ended");
+                sibling_io.shutdown();
             });
         }
 
-        self.alive.store(true, Ordering::Relaxed);
+        if !Self::has_null_handler(Protocol::MiningProtocol) {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ServerServiceError::ServiceNotReady)?;
+            match self
+                .call(RequestToSv2Server::MiningTrigger(
+                    MiningServerTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Mining handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start mining handler: {:?}", e);
+                    return Err(Sv2ServerServiceError::FailedToStartMiningHandler);
+                }
+            }
+        }
+
+        // todo: start job declaration handler
+        // todo: start template distribution handler
+
         debug!("Sv2ServerService started");
+
+        // wait for cancellation token to be cancelled
+        self.cancellation_token.cancelled().await;
 
         Ok(())
     }
@@ -297,24 +328,29 @@ where
 
         // todo: remove client from other subprotocols
 
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.get_mut(&client_id) {
-            client.read().await.io.shutdown();
+        if let Some((_, client)) = self.clients.remove(&client_id) {
+            client.io.shutdown();
         }
-        clients.remove(&client_id);
     }
 
     async fn remove_all_clients(&mut self) {
-        if !Self::has_null_handler(Protocol::MiningProtocol) {
-            self.mining_handler.remove_all_clients().await;
+        let client_entries: Vec<_> = self
+            .clients
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().clone()))
+            .collect();
+
+        for (client_id, client) in client_entries {
+            client.io.shutdown();
+
+            if !Self::has_null_handler(Protocol::MiningProtocol) {
+                self.mining_handler.remove_client(client_id).await;
+            }
+
+            // todo: remove client from other subprotocols
         }
 
-        // todo: remove clients from other subprotocols
-
-        let mut clients = self.clients.write().await;
-        for (_, client) in clients.drain() {
-            client.read().await.io.shutdown();
-        }
+        self.clients.clear();
     }
 
     fn has_null_handler(protocol: Protocol) -> bool {
@@ -361,30 +397,23 @@ where
     }
 
     /// Returns `Some` if there is an active [`client::Sv2ServerServiceClient`] on the requested index, `None` otherwise.
-    pub async fn get_client(&self, client_id: u32) -> Option<Sv2ServerServiceClient> {
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&client_id) {
-            let client = client.write().await;
-            Some(client.clone())
-        } else {
-            None
-        }
+    pub fn get_client(&self, client_id: u32) -> Option<Arc<Sv2ServerServiceClient>> {
+        self.clients.get(&client_id).map(|entry| entry.clone())
     }
 
     /// Returns how many [`client::Sv2ServerServiceClient`] are active.
-    pub async fn get_client_count(&self) -> usize {
-        self.clients.read().await.len()
+    pub fn get_client_count(&self) -> usize {
+        self.clients.len()
     }
 
     /// Updates the last message time for a given client
-    pub async fn update_client_message_time(&self, client_id: u32) -> bool {
-        let clients = self.clients.read().await;
-        if let Some(client) = clients.get(&client_id) {
-            let mut client = client.write().await;
-            client.update_last_message_time();
-            return true;
+    pub fn update_client_message_time(&self, client_id: u32) -> bool {
+        if let Some(client_entry) = self.clients.get(&client_id) {
+            client_entry.update_last_message_time();
+            true
+        } else {
+            false
         }
-        false
     }
 
     /// The core logic for handling a [`SetupConnection`] request:
@@ -414,11 +443,12 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+            let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
+                RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![setup_connection_error.into()],
+                })),
+            ));
             return Ok(response);
         }
 
@@ -434,11 +464,13 @@ where
                     .try_into()
                     .expect("failed to encode string"),
             };
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+
+            let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
+                RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![setup_connection_error.into()],
+                })),
+            ));
             return Ok(response);
         }
 
@@ -480,11 +512,16 @@ where
                     .expect("failed to encode string"),
             };
 
-            let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-                client_id,
-                message: setup_connection_error.into(),
-                message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR,
-            }));
+            let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
+                RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
+                    client_id,
+                    messages: vec![setup_connection_error.into()],
+                })),
+            ));
+
+            if !Self::has_null_handler(Protocol::MiningProtocol) {
+                self.mining_handler.add_client(client_id, req.flags).await;
+            }
 
             return Ok(response);
         }
@@ -503,10 +540,8 @@ where
             device_id: req.device_id,
         };
 
-        let mut clients = self.clients.write().await;
-        if let Some(client) = clients.get_mut(&client_id) {
-            let mut client = client.write().await;
-            client.connection = Some(connection);
+        if let Some(client_entry) = self.clients.get(&client_id) {
+            *client_entry.connection.write().await = Some(connection);
         } else {
             return Err(RequestToSv2ServerError::IdNotFound);
         }
@@ -532,45 +567,20 @@ where
             flags: setup_connection_success_flags,
         };
 
-        let response = ResponseFromSv2Server::SendReplyToClient(Box::new(Sv2MessageToClient {
-            client_id,
-            message: setup_connection_success.into(),
-            message_type: const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
-        }));
+        let response = ResponseFromSv2Server::TriggerNewRequest(Box::new(
+            RequestToSv2Server::SendMessagesToClient(Box::new(Sv2MessagesToClient {
+                client_id,
+                messages: vec![setup_connection_success.into()],
+            })),
+        ));
 
         Ok(response)
     }
 
     /// Add a client to the service (for testing purposes)
     #[cfg(test)]
-    pub async fn add_client(&mut self, client_id: u32, client: Sv2ServerServiceClient) {
-        self.clients
-            .write()
-            .await
-            .insert(client_id, Arc::new(RwLock::new(client)));
-    }
-
-    pub fn is_alive(&self) -> bool {
-        self.alive.load(Ordering::Relaxed)
-    }
-
-    /// Shuts down all spawned tasks gracefully.
-    /// This will:
-    /// 1. Stop accepting new client connections
-    /// 2. Stop the inactive connection monitor
-    /// 3. Stop all client message handlers
-    pub async fn shutdown(&self) {
-        debug!("Initiating shutdown of Sv2ServerService");
-
-        // Send shutdown signal to all tasks
-        if let Err(e) = self.shutdown_tx.send(()) {
-            error!("Failed to send shutdown signal: {}", e);
-        }
-
-        while self.is_alive() {
-            tokio::task::yield_now().await;
-        }
-        debug!("Sv2ServerService shutdown complete");
+    pub fn add_client(&mut self, client_id: u32, client: Sv2ServerServiceClient) {
+        self.clients.insert(client_id, Arc::new(client));
     }
 }
 
@@ -623,15 +633,15 @@ where
 
         Box::pin(async move {
             // Extract client_id if available and update message time
-            if let RequestToSv2Server::Message(sv2_message) = &req {
+            if let RequestToSv2Server::IncomingMessage(sv2_message) = &req {
                 if let Some(client_id) = sv2_message.client_id {
-                    this.update_client_message_time(client_id).await;
+                    this.update_client_message_time(client_id);
                 }
             }
 
             let req_clone = req.clone();
             let response = match req_clone {
-                RequestToSv2Server::Message(sv2_message) => {
+                RequestToSv2Server::IncomingMessage(sv2_message) => {
                     match sv2_message.message {
                         AnyMessage::Common(common) => {
                             match common {
@@ -802,12 +812,18 @@ where
                     }
                 }
                 RequestToSv2Server::MiningTrigger(req) => match req {
-                    RequestToSv2MiningServer::NewTemplate(new_template) => {
-                        debug!("Sv2ServerService received a NewTemplate message via external mining trigger");
+                    MiningServerTrigger::Start => {
+                        debug!("Sv2ServerService received a MiningServerTrigger::Start request");
+                        this.mining_handler.start().await
+                    }
+                    MiningServerTrigger::NewTemplate(new_template) => {
+                        debug!(
+                            "Sv2ServerService received a MiningServerTrigger::NewTemplate request"
+                        );
                         this.mining_handler.on_new_template(new_template).await
                     }
-                    RequestToSv2MiningServer::SetNewPrevHash(set_new_prev_hash) => {
-                        debug!("Sv2ServerService received a SetNewPrevHash message via external mining trigger");
+                    MiningServerTrigger::SetNewPrevHash(set_new_prev_hash) => {
+                        debug!("Sv2ServerService received a MiningServerTrigger::SetNewPrevHash request");
                         this.mining_handler
                             .on_set_new_prev_hash(set_new_prev_hash)
                             .await
@@ -830,38 +846,83 @@ where
                         }
                     }
                 }
-            };
+                RequestToSv2Server::SendMessagesToClient(sv2_messages_to_client) => {
+                    debug!("Sv2ServerService received a SendMessagesToClient request");
 
-            if let Ok(ResponseFromSv2Server::SendReplyToClient(sv2_message_to_client)) =
-                response.clone()
-            {
-                let client_id = sv2_message_to_client.client_id;
+                    let client_id = sv2_messages_to_client.client_id;
 
-                // Get the client's IO from the map
-                let io = {
-                    let clients = this.clients.read().await;
-                    if let Some(client) = clients.get(&client_id) {
-                        let client = client.read().await;
+                    // Get the client's IO from the map
+                    let io = if let Some(client) = this.clients.get(&client_id) {
                         client.io.clone()
                     } else {
-                        tracing::error!(
-                            "client {} not found when trying to send response",
-                            client_id
-                        );
+                        error!("Client not found in Sv2ServerService");
                         return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
-                    }
-                };
+                    };
 
-                let message = sv2_message_to_client.message.clone();
-                let message_type = sv2_message_to_client.message_type;
+                    let messages = sv2_messages_to_client.messages;
 
-                match io.send_message(message, message_type).await {
-                    Ok(_) => {
-                        return Ok(ResponseFromSv2Server::Ok);
+                    for message in messages {
+                        match io.send_message(message).await {
+                            Ok(_) => {
+                                continue;
+                            }
+                            Err(_) => {
+                                return Err(RequestToSv2ServerError::FailedToSendResponseToClient)
+                            }
+                        }
                     }
-                    Err(_) => return Err(RequestToSv2ServerError::FailedToSendResponseToClient),
+
+                    return Ok(ResponseFromSv2Server::Ok);
                 }
-            }
+                RequestToSv2Server::SendMessagesToClients(sv2_messages_to_clients) => {
+                    debug!("Sv2ServerService received a SendMessagesToClients request");
+
+                    // iterate over each client and send the messages to them
+                    for sv2_messages_to_client in sv2_messages_to_clients.as_ref() {
+                        let client_id = sv2_messages_to_client.client_id;
+
+                        // Get the client's IO from the map
+                        let io = if let Some(client) = this.clients.get(&client_id) {
+                            client.io.clone()
+                        } else {
+                            error!("Client not found in Sv2ServerService");
+                            return Err(RequestToSv2ServerError::FailedToSendResponseToClient);
+                        };
+
+                        for message in sv2_messages_to_client.messages.clone() {
+                            match io.send_message(message).await {
+                                Ok(_) => {
+                                    continue;
+                                }
+                                Err(_) => {
+                                    return Err(
+                                        RequestToSv2ServerError::FailedToSendResponseToClient,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(ResponseFromSv2Server::Ok);
+                }
+                RequestToSv2Server::MultipleRequests(reqs) => {
+                    debug!(
+                        "Sv2ServerService received a MultipleRequests request: {:?}",
+                        reqs
+                    );
+
+                    for req in reqs.as_ref() {
+                        if let Err(e) = this.call(req.clone()).await {
+                            error!(
+                                "RequestToSv2Server::MultipleRequests {:?} generated an error {:?}",
+                                req, e
+                            );
+                            return Err(e);
+                        }
+                    }
+                    Ok(ResponseFromSv2Server::Ok)
+                }
+            };
 
             // allow for recursive chaining of requests
             if let Ok(ResponseFromSv2Server::TriggerNewRequest(req)) = response {
@@ -886,9 +947,11 @@ mod tests {
     };
     use crate::Sv2MessageFrame;
     use key_utils::{Secp256k1PublicKey, Secp256k1SecretKey};
-    use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-    use roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+    use stratum_common::roles_logic_sv2;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
+    use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
+    use tokio_util::sync::CancellationToken;
 
     fn get_available_port() -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -931,10 +994,19 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -955,10 +1027,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
@@ -969,7 +1038,7 @@ mod tests {
                 let header = frame.get_header().unwrap();
                 assert_eq!(
                     header.msg_type(),
-                    const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS
                 );
                 let mut payload = frame.payload().to_vec();
                 let message: Result<AnyMessage<'_>, _> =
@@ -987,11 +1056,11 @@ mod tests {
         }
 
         // Verify that the client was added to the service
-        assert_eq!(sv2_server_service.get_client_count().await, 1);
+        assert_eq!(sv2_server_service.get_client_count(), 1);
 
         // Verify that the client's connection details were set correctly
-        let client = sv2_server_service.get_client(1).await.unwrap();
-        let connection = client.connection.unwrap();
+        let client = sv2_server_service.get_client(1).unwrap();
+        let connection = client.connection.read().await.clone().unwrap();
         assert_eq!(connection.protocol, setup_connection_ok.protocol);
         assert_eq!(connection.min_version, setup_connection_ok.min_version);
         assert_eq!(connection.max_version, setup_connection_ok.max_version);
@@ -1009,7 +1078,7 @@ mod tests {
         // sleep to trigger removal of connection due to inactivity (limit is 1s)
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1049,10 +1118,19 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client_1 = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1074,20 +1152,14 @@ mod tests {
         // Send SetupConnection message through the first client
         client_1
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
         // Send SetupConnection message through the second client
         client_2
             .io
-            .send_message(
-                setup_connection_ok.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_ok.clone().into())
             .await
             .unwrap();
 
@@ -1096,7 +1168,7 @@ mod tests {
         let _response_2 = client_2.io.rx.recv().await.unwrap();
 
         // Verify that the clients were added to the service
-        assert_eq!(sv2_server_service.get_client_count().await, 2);
+        assert_eq!(sv2_server_service.get_client_count(), 2);
     }
 
     #[tokio::test]
@@ -1142,10 +1214,19 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1166,10 +1247,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_protocol.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_protocol.clone().into())
             .await
             .unwrap();
 
@@ -1180,7 +1258,7 @@ mod tests {
                 let header = frame.get_header().unwrap();
                 assert_eq!(
                     header.msg_type(),
-                    const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
                 );
                 let mut payload = frame.payload().to_vec();
                 let message: Result<AnyMessage<'_>, _> =
@@ -1199,7 +1277,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1245,10 +1323,19 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Test min version too high
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1269,10 +1356,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_min_version.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_min_version.clone().into())
             .await
             .unwrap();
 
@@ -1283,7 +1367,7 @@ mod tests {
                 let header = frame.get_header().unwrap();
                 assert_eq!(
                     header.msg_type(),
-                    const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
                 );
                 let mut payload = frame.payload().to_vec();
                 let message: Result<AnyMessage<'_>, _> =
@@ -1317,10 +1401,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_bad_max_version.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_bad_max_version.clone().into())
             .await
             .unwrap();
 
@@ -1331,7 +1412,7 @@ mod tests {
                 let header = frame.get_header().unwrap();
                 assert_eq!(
                     header.msg_type(),
-                    const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
                 );
                 let mut payload = frame.payload().to_vec();
                 let message: Result<AnyMessage<'_>, _> =
@@ -1350,7 +1431,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1396,9 +1477,19 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
-        sv2_server_service.start().await.unwrap();
+        let cancellation_token = CancellationToken::new();
+
+        let sv2_server_service =
+            Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token).unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a TCP client to establish a connection
         let client = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1419,10 +1510,7 @@ mod tests {
         // Send SetupConnection message through the client
         client
             .io
-            .send_message(
-                setup_connection_unsupported_flags.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection_unsupported_flags.clone().into())
             .await
             .unwrap();
 
@@ -1433,7 +1521,7 @@ mod tests {
                 let header = frame.get_header().unwrap();
                 assert_eq!(
                     header.msg_type(),
-                    const_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
+                    roles_logic_sv2::common_messages_sv2::MESSAGE_TYPE_SETUP_CONNECTION_ERROR
                 );
                 let mut payload = frame.payload().to_vec();
                 let message: Result<AnyMessage<'_>, _> =
@@ -1452,7 +1540,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
         // verify that the client was removed from the service
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[test]
@@ -1487,8 +1575,11 @@ mod tests {
         // Create a null mining handler
         let mining_handler = NullSv2MiningServerHandler {};
 
+        let cancellation_token = CancellationToken::new();
+
         // This should return an error because we're using a null handler for a supported protocol
-        let result = super::Sv2ServerService::new(sv2_server_config, mining_handler);
+        let result =
+            super::Sv2ServerService::new(sv2_server_config, mining_handler, cancellation_token);
 
         assert!(result.is_err());
 
@@ -1540,19 +1631,32 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service = Sv2ServerService::new(
+            sv2_server_config,
+            mining_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Verify initial state
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
 
         // Shutdown the server
-        sv2_server_service.shutdown().await;
+        cancellation_token.cancel();
 
         // Verify final state
-        assert_eq!(sv2_server_service.get_client_count().await, 0);
+        assert_eq!(sv2_server_service.get_client_count(), 0);
     }
 
     #[tokio::test]
@@ -1591,10 +1695,23 @@ mod tests {
 
         let mining_handler = NullSv2MiningServerHandler;
 
-        let mut sv2_server_service =
-            Sv2ServerService::new(sv2_server_config, mining_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        sv2_server_service.start().await.unwrap();
+        let sv2_server_service = Sv2ServerService::new(
+            sv2_server_config,
+            mining_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
+
+        // Spawn the server start in a background task
+        let mut sv2_server_service_clone = sv2_server_service.clone();
+        tokio::spawn(async move {
+            sv2_server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create and connect multiple clients
         let client1 = Sv2EncryptedTcpClient::new(server_addr, None).await.unwrap();
@@ -1616,30 +1733,20 @@ mod tests {
         // Send SetupConnection messages
         client1
             .io
-            .send_message(
-                setup_connection.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection.clone().into())
             .await
             .unwrap();
         client2
             .io
-            .send_message(
-                setup_connection.clone().into(),
-                const_sv2::MESSAGE_TYPE_SETUP_CONNECTION,
-            )
+            .send_message(setup_connection.clone().into())
             .await
             .unwrap();
 
         // Verify both clients are connected
-        let client_count = sv2_server_service.get_client_count().await;
+        let client_count = sv2_server_service.get_client_count();
         assert_eq!(client_count, 2);
 
-        sv2_server_service.shutdown().await;
-
-        // Verify all clients were cleaned up
-        let final_count = sv2_server_service.get_client_count().await;
-        assert_eq!(final_count, 0);
+        cancellation_token.cancel();
 
         // Try to receive messages from clients - should fail as connections are closed
         assert!(client1.io.recv_message().await.is_err());

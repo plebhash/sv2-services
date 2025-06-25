@@ -5,24 +5,25 @@ use crate::client::service::response::ResponseFromSv2Client;
 use crate::client::service::sibling::Sv2SiblingServerServiceIo;
 use crate::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use crate::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
-use crate::client::service::subprotocols::mining::request::RequestToSv2MiningClientService;
+use crate::client::service::subprotocols::mining::trigger::MiningClientTrigger;
 use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
 use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
-use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
 use crate::client::tcp::encrypted::Sv2EncryptedTcpClient;
-use const_sv2::MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL;
-use const_sv2::MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL;
-use const_sv2::MESSAGE_TYPE_SETUP_CONNECTION;
-use const_sv2::{MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_SUBMIT_SOLUTION};
-use roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-use roles_logic_sv2::mining_sv2::{OpenExtendedMiningChannel, OpenStandardMiningChannel};
-use roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining, TemplateDistribution};
-use roles_logic_sv2::template_distribution_sv2::CoinbaseOutputConstraints;
+use async_channel::Receiver;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::{broadcast, RwLock};
+use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
+use stratum_common::roles_logic_sv2::mining_sv2::{
+    OpenExtendedMiningChannel, OpenStandardMiningChannel,
+};
+use stratum_common::roles_logic_sv2::parsers::{
+    AnyMessage, CommonMessages, Mining, TemplateDistribution,
+};
+use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
 use tower::{Service, ServiceExt};
 use tracing::{debug, error};
 
@@ -61,8 +62,9 @@ where
     mining_handler: M,
     // todo: add job_declaration_handler: J,
     template_distribution_handler: T,
-    shutdown_tx: broadcast::Sender<()>,
+    cancellation_token: CancellationToken,
     sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
+    request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
 }
 
 impl<M, T> Sv2ClientService<M, T>
@@ -78,9 +80,42 @@ where
         mining_handler: M,
         template_distribution_handler: T,
         // todo: add job_declaration_handler: J,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
-        let sv2_client_service =
-            Self::_new(config, mining_handler, template_distribution_handler, None)?;
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            None,
+            None,
+            cancellation_token,
+        )?;
+        Ok(sv2_client_service)
+    }
+
+    /// Creates a new [`Sv2ClientService`] with a request injector.
+    ///
+    /// The request injector is used to inject requests into the client service.
+    ///
+    /// Can be used for example for handler functions that are not defined in the handler trait
+    /// (and therefore cannot leverage `ResponseFromSv2Client::TriggerNewRequest`) but still need to send requests to the server.
+    ///
+    /// Before calling this, you need to create a [`Receiver`] using [`async_channel::channel`].
+    pub fn new_with_request_injector(
+        config: Sv2ClientServiceConfig,
+        mining_handler: M,
+        template_distribution_handler: T,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+        cancellation_token: CancellationToken,
+    ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            None,
+            Some(request_rx),
+            cancellation_token,
+        )?;
         Ok(sv2_client_service)
     }
 
@@ -89,17 +124,41 @@ where
     /// The sibling server service is used to send and receive requests to a sibling [`crate::server::service::Sv2ServerService`] that pairs with this client.    
     ///
     /// Before calling this, you need to create a [`Sv2SiblingServerServiceIo`] using [`crate::server::service::Sv2ServerService::new_with_sibling_io`].
-    pub fn new_with_sibling_io(
+    pub fn new_from_sibling_io(
         config: Sv2ClientServiceConfig,
         mining_handler: M,
+        // todo: add job_declaration_handler: J,
         template_distribution_handler: T,
         sibling_server_service_io: Sv2SiblingServerServiceIo,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         let sv2_client_service = Self::_new(
             config,
             mining_handler,
             template_distribution_handler,
             Some(sibling_server_service_io),
+            None,
+            cancellation_token,
+        )?;
+        Ok(sv2_client_service)
+    }
+
+    pub fn new_from_sibling_io_with_request_injector(
+        config: Sv2ClientServiceConfig,
+        mining_handler: M,
+        // todo: add job_declaration_handler: J,
+        template_distribution_handler: T,
+        sibling_server_service_io: Sv2SiblingServerServiceIo,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+        cancellation_token: CancellationToken,
+    ) -> Result<Self, Sv2ClientServiceError> {
+        let sv2_client_service = Self::_new(
+            config,
+            mining_handler,
+            template_distribution_handler,
+            Some(sibling_server_service_io),
+            Some(request_rx),
+            cancellation_token,
         )?;
         Ok(sv2_client_service)
     }
@@ -111,6 +170,8 @@ where
         // todo: add job_declaration_handler: J,
         template_distribution_handler: T,
         sibling_server_service_io: Option<Sv2SiblingServerServiceIo>,
+        request_injector: Option<Receiver<RequestToSv2Client<'static>>>,
+        cancellation_token: CancellationToken,
     ) -> Result<Self, Sv2ClientServiceError> {
         Self::validate_protocol_handlers(&config)?;
 
@@ -121,8 +182,9 @@ where
             template_distribution_tcp_client: Arc::new(RwLock::new(None)),
             mining_handler,
             template_distribution_handler,
-            shutdown_tx: broadcast::channel(1).0,
+            cancellation_token,
             sibling_server_service_io,
+            request_injector,
         };
 
         Ok(sv2_client_service)
@@ -199,11 +261,11 @@ where
     }
 
     pub async fn start(&mut self) -> Result<(), Sv2ClientServiceError> {
-        self.ready()
-            .await
-            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
-
         for (protocol, flags) in self.config.supported_protocols() {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
             let initiate_connection_response = self
                 .call(RequestToSv2Client::SetupConnectionTrigger(protocol, flags))
                 .await
@@ -223,59 +285,79 @@ where
                     error!("Error listening for messages: {:?}", e);
                 }
             });
+        }
 
-            let mut this = self.clone();
-            if let Some(_sibling_server_service_io) = &mut this.sibling_server_service_io {
-                tokio::spawn(async move {
-                    if let Err(e) = this.listen_for_requests_via_sibling_server_service().await {
-                        error!("Error listening for requests: {:?}", e);
-                    }
-                });
+        let mut this = self.clone();
+        if let Some(_sibling_server_service_io) = this.sibling_server_service_io.clone() {
+            tokio::spawn(async move {
+                if let Err(e) = this.listen_for_requests_via_sibling_server_service().await {
+                    error!("Error listening for requests: {:?}", e);
+                }
+            });
+        }
+
+        let mut this = self.clone();
+        if let Some(request_injector) = this.request_injector.clone() {
+            tokio::spawn(async move {
+                if let Err(e) = this
+                    .listen_for_requests_via_request_injector(request_injector)
+                    .await
+                {
+                    error!("Error listening for requests: {:?}", e);
+                }
+            });
+        }
+
+        if std::any::TypeId::of::<M>() != std::any::TypeId::of::<NullSv2MiningClientHandler>() {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
+            match self
+                .call(RequestToSv2Client::MiningTrigger(
+                    MiningClientTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Mining handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start mining handler: {:?}", e);
+                    return Err(Sv2ClientServiceError::FailedToStartMiningHandler);
+                }
             }
         }
 
-        self.ready()
-            .await
-            .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+        // todo: start job declaration handler
+
+        if std::any::TypeId::of::<T>()
+            != std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+        {
+            self.ready()
+                .await
+                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
+            match self
+                .call(RequestToSv2Client::TemplateDistributionTrigger(
+                    TemplateDistributionClientTrigger::Start,
+                ))
+                .await
+            {
+                Ok(_) => {
+                    debug!("Template distribution handler started");
+                }
+                Err(e) => {
+                    error!("Failed to start template distribution handler: {:?}", e);
+                    return Err(Sv2ClientServiceError::FailedToStartTemplateDistributionHandler);
+                }
+            }
+        }
+
+        // wait for cancellation token to be cancelled
+        self.cancellation_token.cancelled().await;
 
         Ok(())
-    }
-
-    /// Shuts down the client service
-    pub async fn shutdown(&mut self) {
-        debug!("Initiating shutdown of Sv2ClientService");
-
-        // Send shutdown signal to all tasks
-        if let Err(e) = self.shutdown_tx.send(()) {
-            error!("Failed to send shutdown signal: {}", e);
-        }
-
-        {
-            let mut mining_guard = self.mining_tcp_client.write().await;
-            if let Some(client) = &*mining_guard {
-                client.shutdown();
-            }
-            *mining_guard = None;
-        }
-
-        {
-            let mut job_declaration_guard = self.job_declaration_tcp_client.write().await;
-            if let Some(client) = &*job_declaration_guard {
-                client.shutdown();
-            }
-            *job_declaration_guard = None;
-        }
-
-        {
-            let mut template_distribution_guard =
-                self.template_distribution_tcp_client.write().await;
-            if let Some(client) = &*template_distribution_guard {
-                client.shutdown();
-            }
-            *template_distribution_guard = None;
-        }
-
-        debug!("Sv2ClientService shutdown complete");
     }
 
     async fn initiate_connection(
@@ -402,14 +484,11 @@ where
         };
 
         // Send the setup connection message using the io field
-        tcp_client
-            .io
-            .send_message(setup_connection.into(), MESSAGE_TYPE_SETUP_CONNECTION)
-            .await?;
+        tcp_client.io.send_message(setup_connection.into()).await?;
 
         // wait for the server to respond with a SetupConnectionSuccess or SetupConnectionError
         // and return the appropriate response
-        let (message, _) = tcp_client.io.recv_message().await?;
+        let message = tcp_client.io.recv_message().await?;
         match message {
             AnyMessage::Common(CommonMessages::SetupConnectionSuccess(
                 setup_connection_success,
@@ -439,53 +518,72 @@ where
     async fn listen_for_messages_via_tcp(
         &mut self,
         protocol: Protocol,
-    ) -> Result<(), RequestToSv2ClientError> {
+    ) -> Result<(), Sv2ClientServiceError> {
         if !self.is_connected(protocol).await {
-            return Err(RequestToSv2ClientError::IsNotConnected);
+            return Err(Sv2ClientServiceError::IsNotConnected);
         }
 
         let tcp_client: Sv2EncryptedTcpClient = match protocol {
             Protocol::MiningProtocol => match self.mining_tcp_client.read().await.as_ref() {
                 Some(client) => client.clone(),
-                None => return Err(RequestToSv2ClientError::IsNotConnected),
+                None => return Err(Sv2ClientServiceError::IsNotConnected),
             },
             Protocol::JobDeclarationProtocol => {
                 match self.job_declaration_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
-                    None => return Err(RequestToSv2ClientError::IsNotConnected),
+                    None => return Err(Sv2ClientServiceError::IsNotConnected),
                 }
             }
             Protocol::TemplateDistributionProtocol => {
                 match self.template_distribution_tcp_client.read().await.as_ref() {
                     Some(client) => client.clone(),
-                    None => return Err(RequestToSv2ClientError::IsNotConnected),
+                    None => return Err(Sv2ClientServiceError::IsNotConnected),
                 }
             }
         };
 
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    debug!("Message listener received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    debug!("Message listener task cancelled");
+                    tcp_client.shutdown();
                     break;
                 }
                 message_result = tcp_client.io.recv_message() => {
                     match message_result {
-                        Ok((message, _)) => {
-                            if let Err(e) = self.call(RequestToSv2Client::Message(message)).await {
+                        Ok(message) => {
+                            self.ready()
+                                .await
+                                .map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+
+                            if let Err(e) = self.call(RequestToSv2Client::IncomingMessage(message)).await {
                                 // this is a protection from attacks where a server sends a message that it knows the client cannot handle
                                 // we simply log the error and ignore the message, without shutting down the client
                                 error!("Error handling message: {:?}, message will be ignored", e);
                             }
                         }
                         Err(_) => {
-                            debug!("Message listener channel closed");
+                            error!("{:?} server closed the connection", protocol);
+                            self.cancellation_token.cancel();
                             break;
                         }
                     }
                 }
+            }
+        }
+
+        // if the loop was cancelled, we need to remove the tcp client from the map
+        match protocol {
+            Protocol::MiningProtocol => {
+                self.mining_tcp_client.write().await.take();
+            }
+            Protocol::JobDeclarationProtocol => {
+                self.job_declaration_tcp_client.write().await.take();
+            }
+            Protocol::TemplateDistributionProtocol => {
+                self.template_distribution_tcp_client.write().await.take();
             }
         }
 
@@ -495,18 +593,18 @@ where
     // Listens for requests from the sibling server service and triggers Service Requests
     async fn listen_for_requests_via_sibling_server_service(
         &mut self,
-    ) -> Result<(), RequestToSv2ClientError> {
+    ) -> Result<(), Sv2ClientServiceError> {
         let sibling_server_service_io = self
             .sibling_server_service_io
             .as_ref()
-            .ok_or(RequestToSv2ClientError::NoSiblingServerServiceIo)?;
+            .ok_or(Sv2ClientServiceError::NoSiblingServerServiceIo)?;
 
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             tokio::select! {
-                _ = shutdown_rx.recv() => {
-                    debug!("Sibling server service request listener received shutdown signal");
+                _ = cancellation_token.cancelled() => {
+                    debug!("Sibling server service request listener task cancelled");
                     break;
                 }
                 result = sibling_server_service_io.recv() => {
@@ -515,17 +613,60 @@ where
                             debug!("Received request from sibling server service");
 
                             let mut service = self.clone();
+                            service.ready().await.map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
                             if let Err(e) = service.call(*req).await {
                                 error!("Error handling request from sibling server service: {:?}", e);
                             }
                         }
                         Err(e) => {
                             error!("Failed to receive request from sibling server service: {:?}", e);
+                            break;
                         }
                     }
                 }
             }
         }
+
+        debug!("Sibling server service request listener task ended");
+        sibling_server_service_io.shutdown();
+        Ok(())
+    }
+
+    // Listens for requests from the request injector and triggers Service Requests
+    async fn listen_for_requests_via_request_injector(
+        &mut self,
+        request_rx: Receiver<RequestToSv2Client<'static>>,
+    ) -> Result<(), Sv2ClientServiceError> {
+        let cancellation_token = self.cancellation_token.clone();
+
+        loop {
+            tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    debug!("Request injector listener task cancelled");
+                    break;
+                }
+                result = request_rx.recv() => {
+                    match result {
+                        Ok(req) => {
+                            debug!("Received request from request injector");
+                            let mut service = self.clone();
+                            service.ready().await.map_err(|_| Sv2ClientServiceError::ServiceNotReady)?;
+                            if let Err(e) = service.call(req).await {
+                                error!("Error handling request from request injector: {:?}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to receive request from request injector: {:?}", e);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!("Request injector listener task ended");
+        request_rx.close();
+
         Ok(())
     }
 
@@ -630,7 +771,7 @@ where
                         this.initiate_connection(protocol, 0).await
                     }
                 },
-                RequestToSv2Client::Message(sv2_message) => {
+                RequestToSv2Client::IncomingMessage(sv2_message) => {
                     match sv2_message {
                         AnyMessage::Common(common) => match common {
                             CommonMessages::SetupConnection(_) => {
@@ -851,7 +992,11 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
-                        RequestToSv2MiningClientService::OpenStandardMiningChannel(
+                        MiningClientTrigger::Start => {
+                            debug!("Sv2ClientService received a trigger request for starting the mining handler");
+                            this.mining_handler.start().await
+                        }
+                        MiningClientTrigger::OpenStandardMiningChannel(
                             request_id,
                             user_identity,
                             nominal_hash_rate,
@@ -889,10 +1034,7 @@ where
 
                             let result = tcp_client
                                 .io
-                                .send_message(
-                                    open_standard_mining_channel,
-                                    MESSAGE_TYPE_OPEN_STANDARD_MINING_CHANNEL,
-                                )
+                                .send_message(open_standard_mining_channel)
                                 .await;
                             match result {
                                 Ok(_) => {
@@ -902,7 +1044,7 @@ where
                                 Err(e) => Err(e.into()),
                             }
                         }
-                        RequestToSv2MiningClientService::OpenExtendedMiningChannel(
+                        MiningClientTrigger::OpenExtendedMiningChannel(
                             request_id,
                             user_identity,
                             nominal_hash_rate,
@@ -943,10 +1085,7 @@ where
 
                             let result = tcp_client
                                 .io
-                                .send_message(
-                                    open_extended_mining_channel,
-                                    MESSAGE_TYPE_OPEN_EXTENDED_MINING_CHANNEL,
-                                )
+                                .send_message(open_extended_mining_channel)
                                 .await;
                             match result {
                                 Ok(_) => {
@@ -975,85 +1114,33 @@ where
                         return Err(RequestToSv2ClientError::IsNotConnected);
                     }
                     match request {
-                        RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                        TemplateDistributionClientTrigger::Start => {
+                            debug!("Sv2ClientService received a trigger request for starting the template distribution handler");
+                            this.template_distribution_handler.start().await
+                        }
+                        TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                             max_additional_size,
                             max_additional_sigops,
                         ) => {
                             debug!("Sv2ClientService received a trigger request for sending CoinbaseOutputConstraints");
-                            let tcp_client = this
-                                .template_distribution_tcp_client
-                                .read()
-                                .await
-                                .as_ref()
-                                .expect("template_distribution_tcp_client should be Some")
-                                .clone();
-                            let coinbase_output_constraints = AnyMessage::TemplateDistribution(
-                                TemplateDistribution::CoinbaseOutputConstraints(
-                                    CoinbaseOutputConstraints {
-                                        coinbase_output_max_additional_size: max_additional_size,
-                                        coinbase_output_max_additional_sigops: max_additional_sigops,
-                                    },
-                                ),
-                            );
-                            let result = tcp_client
-                                .io
-                                .send_message(
-                                    coinbase_output_constraints,
-                                    MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS,
+                            this.template_distribution_handler
+                                .set_coinbase_output_constraints(
+                                    max_additional_size,
+                                    max_additional_sigops,
                                 )
-                                .await;
-                            match result {
-                                Ok(_) => {
-                                    debug!("Successfully set CoinbaseOutputConstraints");
-                                    this.config
-                                        .template_distribution_config
-                                        .as_mut()
-                                        .expect("template_distribution_config should be Some")
-                                        .coinbase_output_constraints =
-                                        (max_additional_size, max_additional_sigops);
-                                    Ok(ResponseFromSv2Client::Ok)
-                                }
-                                Err(e) => Err(e.into()),
-                            }
+                                .await
                         }
-                        RequestToSv2TemplateDistributionClientService::TransactionDataNeeded(
-                            _template_id,
-                        ) => {
+                        TemplateDistributionClientTrigger::TransactionDataNeeded(_template_id) => {
                             debug!("Sv2ClientService received a trigger request for sending RequestTransactionData");
-                            todo!()
+                            this.template_distribution_handler
+                                .transaction_data_needed(_template_id)
+                                .await
                         }
-                        RequestToSv2TemplateDistributionClientService::SubmitSolution(
-                            submit_solution,
-                        ) => {
+                        TemplateDistributionClientTrigger::SubmitSolution(submit_solution) => {
                             debug!("Sv2ClientService received a trigger request for sending SubmitSolution");
-                            if !this
-                                .is_connected(Protocol::TemplateDistributionProtocol)
+                            this.template_distribution_handler
+                                .submit_solution(submit_solution)
                                 .await
-                            {
-                                return Err(RequestToSv2ClientError::IsNotConnected);
-                            }
-
-                            let tcp_client = this
-                                .template_distribution_tcp_client
-                                .read()
-                                .await
-                                .as_ref()
-                                .expect("template_distribution_tcp_client should be Some")
-                                .clone();
-                            let submit_solution = AnyMessage::TemplateDistribution(
-                                TemplateDistribution::SubmitSolution(submit_solution),
-                            );
-                            let result = tcp_client
-                                .io
-                                .send_message(submit_solution, MESSAGE_TYPE_SUBMIT_SOLUTION)
-                                .await;
-                            match result {
-                                Ok(_) => {
-                                    debug!("Successfully sent SubmitSolution");
-                                    Ok(ResponseFromSv2Client::Ok)
-                                }
-                                Err(e) => Err(e.into()),
-                            }
                         }
                     }
                 }
@@ -1071,6 +1158,106 @@ where
                             Err(RequestToSv2ClientError::NoSiblingServerServiceIo)
                         }
                     }
+                }
+                RequestToSv2Client::SendMessageToMiningServer(message) => {
+                    if this.config.mining_config.is_none()
+                        || std::any::TypeId::of::<M>()
+                            == std::any::TypeId::of::<NullSv2MiningClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::MiningProtocol,
+                        });
+                    }
+
+                    if this.mining_tcp_client.read().await.is_none() {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
+                    }
+
+                    let tcp_client = this
+                        .mining_tcp_client
+                        .read()
+                        .await
+                        .as_ref()
+                        .expect("mining_tcp_client should be Some")
+                        .clone();
+
+                    match tcp_client
+                        .io
+                        .send_message(AnyMessage::Mining(*message))
+                        .await
+                    {
+                        Ok(_) => {
+                            debug!("Successfully sent message to mining server");
+                            return Ok(ResponseFromSv2Client::Ok);
+                        }
+                        Err(e) => Err(e.into()),
+                    }
+                }
+                RequestToSv2Client::SendMessageToTemplateDistributionServer(message) => {
+                    if this.config.template_distribution_config.is_none()
+                        || std::any::TypeId::of::<T>()
+                            == std::any::TypeId::of::<NullSv2TemplateDistributionClientHandler>()
+                    {
+                        return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                            protocol: Protocol::TemplateDistributionProtocol,
+                        });
+                    }
+
+                    if this.template_distribution_tcp_client.read().await.is_none() {
+                        return Err(RequestToSv2ClientError::IsNotConnected);
+                    }
+
+                    let tcp_client = this
+                        .template_distribution_tcp_client
+                        .read()
+                        .await
+                        .as_ref()
+                        .expect("template_distribution_tcp_client should be Some")
+                        .clone();
+
+                    match tcp_client
+                        .io
+                        .send_message(AnyMessage::TemplateDistribution(*message))
+                        .await
+                    {
+                        Ok(_) => {
+                            debug!("Successfully sent message to template distribution server");
+                            return Ok(ResponseFromSv2Client::Ok);
+                        }
+                        Err(e) => Err(e.into()),
+                    }
+                } // RequestToSv2Client::SendMessageToJobDeclarationServer(message) => {
+                //     if this.config.job_declaration_config.is_none() || std::any::TypeId::of::<J>() == std::any::TypeId::of::<NullSv2JobDeclarationClientHandler>() {
+                //         return Err(RequestToSv2ClientError::UnsupportedProtocol {
+                //             protocol: Protocol::JobDeclarationProtocol,
+                //         });
+                //     }
+
+                //     if this.job_declaration_tcp_client.read().await.is_none() {
+                //         return Err(RequestToSv2ClientError::IsNotConnected);
+                //     }
+
+                //     let tcp_client = this.job_declaration_tcp_client.read().await.as_ref().expect("job_declaration_tcp_client should be Some").clone();
+
+                //     match tcp_client.io.send_message(AnyMessage::JobDeclaration(message.0), message.1).await {
+                //         Ok(_) => {
+                //             debug!("Successfully sent message to job declaration server");
+                //             return Ok(ResponseFromSv2Client::Ok);
+                //         },
+                //         Err(e) => Err(e.into()),
+                //     }
+                // }
+                RequestToSv2Client::MultipleRequests(reqs) => {
+                    for req in reqs.as_ref() {
+                        if let Err(e) = this.call(req.clone()).await {
+                            error!(
+                                "RequestToSv2Client::MultipleRequests {:?} generated an error {:?}",
+                                req, e
+                            );
+                            return Err(e);
+                        }
+                    }
+                    Ok(ResponseFromSv2Client::Ok)
                 }
             };
 
@@ -1095,7 +1282,7 @@ mod tests {
     use crate::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
     use crate::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
     use crate::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
-    use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
+    use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
     use crate::client::service::RequestToSv2ClientError;
     use crate::client::service::Sv2ClientService;
     use crate::server::service::config::Sv2ServerServiceConfig;
@@ -1105,37 +1292,41 @@ mod tests {
     use crate::server::service::request::RequestToSv2ServerError;
     use crate::server::service::response::ResponseFromSv2Server;
     use crate::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
-    use crate::server::service::subprotocols::mining::request::RequestToSv2MiningServer;
+    use crate::server::service::subprotocols::mining::trigger::MiningServerTrigger;
     use crate::server::service::Sv2ServerService;
-    use const_sv2::MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS;
-    use integration_tests_sv2::sniffer::MessageDirection;
+    use integration_tests_sv2::interceptor::MessageDirection;
     use integration_tests_sv2::start_sniffer;
     use integration_tests_sv2::start_template_provider;
     use key_utils::Secp256k1PublicKey;
     use key_utils::Secp256k1SecretKey;
-    use roles_logic_sv2::common_messages_sv2::Protocol;
-    use roles_logic_sv2::mining_sv2::OpenExtendedMiningChannel;
-    use roles_logic_sv2::mining_sv2::OpenStandardMiningChannel;
-    use roles_logic_sv2::mining_sv2::SetCustomMiningJob;
-    use roles_logic_sv2::mining_sv2::SubmitSharesExtended;
-    use roles_logic_sv2::mining_sv2::SubmitSharesStandard;
-    use roles_logic_sv2::mining_sv2::UpdateChannel;
-    use roles_logic_sv2::mining_sv2::{
+    use std::net::IpAddr;
+    use std::net::Ipv4Addr;
+    use std::net::SocketAddr;
+    use std::str::FromStr;
+    use std::task::{Context, Poll};
+    use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K;
+    use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+    use stratum_common::roles_logic_sv2::mining_sv2::OpenExtendedMiningChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::OpenStandardMiningChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::SetCustomMiningJob;
+    use stratum_common::roles_logic_sv2::mining_sv2::SubmitSharesExtended;
+    use stratum_common::roles_logic_sv2::mining_sv2::SubmitSharesStandard;
+    use stratum_common::roles_logic_sv2::mining_sv2::UpdateChannel;
+    use stratum_common::roles_logic_sv2::mining_sv2::{
         CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
         OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
         SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel,
         SetNewPrevHash as SetNewPrevHashMining, SetTarget, SubmitSharesError, SubmitSharesSuccess,
         UpdateChannelError,
     };
-    use roles_logic_sv2::template_distribution_sv2::{
+    use stratum_common::roles_logic_sv2::template_distribution_sv2::{
         NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
     };
-    use std::net::IpAddr;
-    use std::net::Ipv4Addr;
-    use std::net::SocketAddr;
-    use std::str::FromStr;
-    use std::task::{Context, Poll};
+    use stratum_common::roles_logic_sv2::template_distribution_sv2::{
+        MESSAGE_TYPE_COINBASE_OUTPUT_CONSTRAINTS, MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
+    };
     use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
     use tower::{Service, ServiceExt};
 
     // A dummy mining handler that is not null, but not actually handling anything
@@ -1150,106 +1341,112 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
+        }
+
         async fn handle_open_standard_mining_channel_success(
-            &self,
+            &mut self,
             _open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_open_extended_mining_channel_success(
-            &self,
+            &mut self,
             _open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_open_mining_channel_error(
-            &self,
+            &mut self,
             _open_mining_channel_error: OpenMiningChannelError<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_update_channel_error(
-            &self,
+            &mut self,
             _update_channel_error: UpdateChannelError<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_close_channel(
-            &self,
+            &mut self,
             _close_channel: CloseChannel<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_extranonce_prefix(
-            &self,
+            &mut self,
             _set_extranonce_prefix: SetExtranoncePrefix<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_submit_shares_success(
-            &self,
+            &mut self,
             _submit_shares_success: SubmitSharesSuccess,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_submit_shares_error(
-            &self,
+            &mut self,
             _submit_shares_error: SubmitSharesError<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_new_mining_job(
-            &self,
+            &mut self,
             _new_mining_job: NewMiningJob<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_new_extended_mining_job(
-            &self,
+            &mut self,
             _new_extended_mining_job: NewExtendedMiningJob<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_new_prev_hash(
-            &self,
+            &mut self,
             _set_new_prev_hash: SetNewPrevHashMining<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_custom_mining_job_success(
-            &self,
+            &mut self,
             _set_custom_mining_job_success: SetCustomMiningJobSuccess,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_custom_mining_job_error(
-            &self,
+            &mut self,
             _set_custom_mining_job_error: SetCustomMiningJobError<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_target(
-            &self,
+            &mut self,
             _set_target: SetTarget<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_set_group_channel(
-            &self,
+            &mut self,
             _set_group_channel: SetGroupChannel<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             Ok(ResponseFromSv2Client::Ok)
@@ -1266,6 +1463,12 @@ mod tests {
             _cx: &mut Context<'_>,
         ) -> Poll<Result<(), RequestToSv2ClientError>> {
             Poll::Ready(Ok(()))
+        }
+
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
         }
 
         async fn handle_new_template(
@@ -1309,13 +1512,19 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+            Ok(ResponseFromSv2Client::Ok)
+        }
+
         async fn handle_new_template(
             &self,
             template: NewTemplate<'_>,
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::NewTemplate(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::NewTemplate(
                         template.into_static(),
                     )),
                 )),
@@ -1329,7 +1538,7 @@ mod tests {
         ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
             let response = ResponseFromSv2Client::TriggerNewRequest(Box::new(
                 RequestToSv2Client::SendRequestToSiblingServerService(Box::new(
-                    RequestToSv2Server::MiningTrigger(RequestToSv2MiningServer::SetNewPrevHash(
+                    RequestToSv2Server::MiningTrigger(MiningServerTrigger::SetNewPrevHash(
                         prev_hash.into_static(),
                     )),
                 )),
@@ -1363,6 +1572,14 @@ mod tests {
             Poll::Ready(Ok(()))
         }
 
+        async fn start(
+            &mut self,
+        ) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+            Ok(ResponseFromSv2Server::Ok)
+        }
+
+        async fn shutdown(&mut self) {}
+
         async fn on_new_template(
             &self,
             _m: NewTemplate<'static>,
@@ -1384,8 +1601,6 @@ mod tests {
         async fn add_client(&mut self, _client_id: u32, _flags: u32) {}
 
         async fn remove_client(&mut self, _client_id: u32) {}
-
-        async fn remove_all_clients(&mut self) {}
 
         async fn handle_open_standard_mining_channel(
             &self,
@@ -1472,10 +1687,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         )
         .unwrap();
 
@@ -1538,10 +1756,13 @@ mod tests {
 
         let mining_handler = DummyMiningClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             mining_handler,
             NullSv2TemplateDistributionClientHandler,
+            cancellation_token,
         )
         .unwrap();
 
@@ -1555,6 +1776,7 @@ mod tests {
 
         let initiate_connection_request =
             RequestToSv2Client::SetupConnectionTrigger(Protocol::TemplateDistributionProtocol, 0);
+        sv2_client_service.ready().await.unwrap();
         let _initiate_connection_result =
             sv2_client_service.call(initiate_connection_request).await;
 
@@ -1598,10 +1820,13 @@ mod tests {
         // add a dummy template distribution handler to (which is not null)
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let result = Sv2ClientService::new(
             config,
             NullSv2MiningClientHandler,
             template_distribution_handler.clone(),
+            cancellation_token,
         );
 
         // we expect an error, because the template distribution config is None
@@ -1636,10 +1861,13 @@ mod tests {
         // but now we are using a null template distribution handler, which is also not allowed
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let result = Sv2ClientService::new(
             config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         );
         assert!(result.is_err());
     }
@@ -1671,10 +1899,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
-        let mut sv2_client_service = Sv2ClientService::new(
+        let cancellation_token = CancellationToken::new();
+
+        let sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -1686,7 +1917,7 @@ mod tests {
         );
 
         // Shutdown should work even when not connected
-        sv2_client_service.shutdown().await;
+        cancellation_token.cancel();
 
         // Verify final state
         assert!(
@@ -1725,10 +1956,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             mining_handler,
             template_distribution_handler,
+            cancellation_token.clone(),
         )
         .unwrap();
 
@@ -1762,7 +1996,7 @@ mod tests {
         );
 
         // Shutdown the client
-        sv2_client_service.shutdown().await;
+        cancellation_token.cancel();
 
         // Wait for listener to exit
         rx.recv().await.unwrap();
@@ -1773,6 +2007,83 @@ mod tests {
                 .is_connected(Protocol::TemplateDistributionProtocol)
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn test_request_injector() {
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+
+        // Start a sniffer to intercept messages between the client and the Template Provider.
+        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_addr, false, vec![]);
+
+        // Allow some time for the sniffer to initialize.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
+            coinbase_output_constraints: (1, 1),
+            server_addr: tp_sniffer_addr,
+            auth_pk: None,
+            setup_connection_flags: 0,
+        };
+
+        let sv2_client_service_config = Sv2ClientServiceConfig {
+            min_supported_version: 2,
+            max_supported_version: 2,
+            endpoint_host: Some("localhost".to_string()),
+            endpoint_port: Some(8080),
+            vendor: Some("test".to_string()),
+            hardware_version: Some("test".to_string()),
+            firmware: Some("test".to_string()),
+            device_id: Some("test".to_string()),
+            mining_config: None,
+            job_declaration_config: None,
+            template_distribution_config: Some(template_distribution_config),
+        };
+
+        let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
+
+        let cancellation_token = CancellationToken::new();
+
+        let sv2_client_service = Sv2ClientService::new_with_request_injector(
+            sv2_client_service_config,
+            NullSv2MiningClientHandler,
+            DummyTemplateDistributionClientHandler,
+            rx,
+            cancellation_token.clone(),
+        )
+        .unwrap();
+
+        let mut sv2_client_service_clone = sv2_client_service.clone();
+        tokio::spawn(async move {
+            sv2_client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        assert!(
+            sv2_client_service
+                .is_connected(Protocol::TemplateDistributionProtocol)
+                .await
+        );
+
+        // Send a request to the client service via the request injector.
+        tx.send(RequestToSv2Client::TemplateDistributionTrigger(
+            TemplateDistributionClientTrigger::TransactionDataNeeded(0),
+        ))
+        .await
+        .unwrap();
+
+        // Wait for the sniffer to detect the transaction data needed message.
+        tp_sniffer
+            .wait_for_message_type(
+                MessageDirection::ToUpstream,
+                MESSAGE_TYPE_REQUEST_TRANSACTION_DATA,
+            )
+            .await;
+
+        // Shutdown the client
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
@@ -1823,8 +2134,7 @@ mod tests {
         let (_tp, tp_address) = start_template_provider(None);
 
         // Start a sniffer to intercept messages between the client and the Template Provider.
-        let (tp_sniffer, tp_sniffer_addr) =
-            start_sniffer("".to_string(), tp_address, false, None).await;
+        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_address, false, vec![]);
 
         // Update the client configuration to use the sniffer's address.
         if let Some(ref mut tdc) = client_config.template_distribution_config {
@@ -1847,30 +2157,52 @@ mod tests {
         let tdc_handler = SiblingIoTemplateDistributionClientHandler;
         let mining_server_handler = DummyMiningServerHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         // Create the Sv2ServerService and its sibling IO for communication with the client.
         let (
-            mut server_service,
+            server_service,
             sibling_server_io, // SiblingIO is created here.
-        ) = Sv2ServerService::new_with_sibling_io(server_config, mining_server_handler).unwrap();
+        ) = Sv2ServerService::new_with_sibling_io(
+            server_config,
+            mining_server_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
 
         // Create the Sv2ClientService and connect it to the server using the sibling IO.
 
-        let mut client_service = Sv2ClientService::new_with_sibling_io(
+        let mut client_service = Sv2ClientService::new_from_sibling_io(
             client_config.clone(),
             NullSv2MiningClientHandler,
             tdc_handler,
             sibling_server_io,
+            cancellation_token.clone(),
         )
         .unwrap();
 
-        // Start the server and client services.
-        server_service.start().await.unwrap();
-        client_service.start().await.unwrap();
+        let mut server_service_clone = server_service.clone();
+        tokio::spawn(async move {
+            server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let mut client_service_clone = client_service.clone();
+        tokio::spawn(async move {
+            client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        client_service.ready().await.unwrap();
 
         // Trigger the Template Provider to set coinbase output constraints.
         client_service
             .call(RequestToSv2Client::TemplateDistributionTrigger(
-                RequestToSv2TemplateDistributionClientService::SetCoinbaseOutputConstraints(
+                TemplateDistributionClientTrigger::SetCoinbaseOutputConstraints(
                     template_distribution_config.coinbase_output_constraints.0,
                     template_distribution_config.coinbase_output_constraints.1,
                 ),
@@ -1892,22 +2224,28 @@ mod tests {
             future_template: false,
             version: 0,
             coinbase_tx_version: 0,
-            coinbase_prefix: binary_codec_sv2::B0255::Owned(hex::decode("00").unwrap().to_vec()),
+            coinbase_prefix: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B0255::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             coinbase_tx_input_sequence: 0,
             coinbase_tx_value_remaining: 0,
             coinbase_tx_outputs_count: 0,
-            coinbase_tx_outputs: binary_codec_sv2::B064K::Owned(
-                hex::decode("00").unwrap().to_vec(),
-            ),
+            coinbase_tx_outputs:
+                stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K::Owned(
+                    hex::decode("00").unwrap().to_vec(),
+                ),
             coinbase_tx_locktime: 0,
-            merkle_path: binary_codec_sv2::Seq0255::new(Vec::new()).unwrap(),
+            merkle_path: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::Seq0255::new(
+                Vec::new(),
+            )
+            .unwrap(),
         };
 
         // Send the NewTemplate message to the sibling server and verify the response.
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;
@@ -1921,17 +2259,21 @@ mod tests {
         // Create a dummy SetNewPrevHash message to simulate a new previous hash.
         let new_prev_hash = SetNewPrevHash {
             template_id: 0,
-            prev_hash: binary_codec_sv2::U256::Owned(hex::decode("00").unwrap().to_vec()),
+            prev_hash: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             header_timestamp: 0,
             n_bits: 0,
-            target: binary_codec_sv2::U256::Owned(hex::decode("00").unwrap().to_vec()),
+            target: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
         };
 
         // Send the SetNewPrevHash message to the sibling server and verify the response.
         let new_prev_hash_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::SetNewPrevHash(new_prev_hash),
+                    MiningServerTrigger::SetNewPrevHash(new_prev_hash),
                 )),
             ))
             .await
@@ -1941,8 +2283,7 @@ mod tests {
         assert!(matches!(new_prev_hash_response, ResponseFromSv2Client::Ok));
 
         // Shutdown the server and client services gracefully.
-        server_service.shutdown().await;
-        client_service.shutdown().await;
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
@@ -2008,15 +2349,36 @@ mod tests {
         let tdc_handler = SiblingIoTemplateDistributionClientHandler;
         let mining_handler = DummyMiningServerHandler;
 
-        // Create the Sv2ServerService with a wrong constructor.
-        let mut server_service = Sv2ServerService::new(server_config, mining_handler).unwrap();
-        // Create the Sv2ClientService with a wrong constructor.
-        let mut client_service =
-            Sv2ClientService::new(client_config, NullSv2MiningClientHandler, tdc_handler).unwrap();
+        let cancellation_token = CancellationToken::new();
 
-        // Start the server and client services.
-        server_service.start().await.unwrap();
-        client_service.start().await.unwrap();
+        // Create the Sv2ServerService with a wrong constructor.
+        let server_service =
+            Sv2ServerService::new(server_config, mining_handler, cancellation_token.clone())
+                .unwrap();
+        // Create the Sv2ClientService with a wrong constructor.
+        let mut client_service = Sv2ClientService::new(
+            client_config,
+            NullSv2MiningClientHandler,
+            tdc_handler,
+            cancellation_token.clone(),
+        )
+        .unwrap();
+
+        let mut server_service_clone = server_service.clone();
+        tokio::spawn(async move {
+            server_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client and server to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let mut client_service_clone = client_service.clone();
+        tokio::spawn(async move {
+            client_service_clone.start().await.unwrap();
+        });
+
+        // Wait for client to be ready
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         // Create a dummy NewTemplate message to simulate a new mining template.
         let new_template = NewTemplate {
@@ -2024,22 +2386,28 @@ mod tests {
             future_template: false,
             version: 0,
             coinbase_tx_version: 0,
-            coinbase_prefix: binary_codec_sv2::B0255::Owned(hex::decode("00").unwrap().to_vec()),
+            coinbase_prefix: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B0255::Owned(
+                hex::decode("00").unwrap().to_vec(),
+            ),
             coinbase_tx_input_sequence: 0,
             coinbase_tx_value_remaining: 0,
             coinbase_tx_outputs_count: 0,
-            coinbase_tx_outputs: binary_codec_sv2::B064K::Owned(
-                hex::decode("00").unwrap().to_vec(),
-            ),
+            coinbase_tx_outputs:
+                stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B064K::Owned(
+                    hex::decode("00").unwrap().to_vec(),
+                ),
             coinbase_tx_locktime: 0,
-            merkle_path: binary_codec_sv2::Seq0255::new(Vec::new()).unwrap(),
+            merkle_path: stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::Seq0255::new(
+                Vec::new(),
+            )
+            .unwrap(),
         };
 
         // Send the NewTemplate message to the sibling server and verify the response.
         let new_template_response = client_service
             .call(RequestToSv2Client::SendRequestToSiblingServerService(
                 Box::new(RequestToSv2Server::MiningTrigger(
-                    RequestToSv2MiningServer::NewTemplate(new_template),
+                    MiningServerTrigger::NewTemplate(new_template),
                 )),
             ))
             .await;
@@ -2051,17 +2419,16 @@ mod tests {
         ));
 
         // Shutdown the server and client services gracefully.
-        server_service.shutdown().await;
-        client_service.shutdown().await;
+        cancellation_token.cancel();
     }
 
     #[tokio::test]
     async fn sv2_client_service_submit_solution() {
         use crate::client::service::request::RequestToSv2Client;
         use crate::client::service::response::ResponseFromSv2Client;
-        use crate::client::service::subprotocols::template_distribution::request::RequestToSv2TemplateDistributionClientService;
-        use roles_logic_sv2::common_messages_sv2::Protocol;
-        use roles_logic_sv2::template_distribution_sv2::SubmitSolution;
+        use crate::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
+        use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
+        use stratum_common::roles_logic_sv2::template_distribution_sv2::SubmitSolution;
 
         // Start a TemplateProvider
         let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
@@ -2089,10 +2456,13 @@ mod tests {
 
         let template_distribution_handler = DummyTemplateDistributionClientHandler;
 
+        let cancellation_token = CancellationToken::new();
+
         let mut sv2_client_service = Sv2ClientService::new(
             sv2_client_service_config,
             NullSv2MiningClientHandler,
             template_distribution_handler,
+            cancellation_token,
         )
         .unwrap();
 
@@ -2114,12 +2484,14 @@ mod tests {
             version: 0,
             header_timestamp: 0,
             header_nonce: 0,
-            coinbase_tx: binary_codec_sv2::B064K::Owned(vec![]),
+            coinbase_tx: B064K::Owned(vec![]),
         };
 
         let submit_solution_request = RequestToSv2Client::TemplateDistributionTrigger(
-            RequestToSv2TemplateDistributionClientService::SubmitSolution(submit_solution),
+            TemplateDistributionClientTrigger::SubmitSolution(submit_solution),
         );
+
+        sv2_client_service.ready().await.unwrap();
 
         let response = sv2_client_service.call(submit_solution_request).await;
         assert!(matches!(response, Ok(ResponseFromSv2Client::Ok)));

@@ -1,4 +1,4 @@
-use roles_logic_sv2::utils::Id;
+use stratum_common::roles_logic_sv2::utils::Id;
 
 pub mod service;
 pub mod tcp;

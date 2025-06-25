@@ -1,9 +1,9 @@
 use anyhow::Result;
-use roles_logic_sv2::mining_sv2::{
+use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel, SetCustomMiningJob,
     SubmitSharesExtended, SubmitSharesStandard, UpdateChannel,
 };
-use roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 use tower_stratum::server::service::request::RequestToSv2ServerError;
 use tower_stratum::server::service::response::ResponseFromSv2Server;
 use tower_stratum::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;
@@ -20,6 +20,13 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>> {
         Poll::Ready(Ok(()))
     }
+
+    async fn start(&mut self) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
+        Ok(ResponseFromSv2Server::Ok)
+    }
+
+    // no spawned tasks, therefore empty shutdown method
+    async fn shutdown(&mut self) {}
 
     async fn on_new_template(
         &self,
@@ -51,10 +58,6 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
 
     async fn remove_client(&mut self, client_id: u32) {
         info!("removing client with id: {}", client_id);
-    }
-
-    async fn remove_all_clients(&mut self) {
-        info!("removing all clients");
     }
 
     async fn handle_open_standard_mining_channel(
