@@ -21,16 +21,14 @@ impl fmt::Display for Sv2ClientServiceError {
             Sv2ClientServiceError::IsNotConnected => write!(f, "Is not connected"),
             Sv2ClientServiceError::BadConfig => write!(f, "Bad config"),
             Sv2ClientServiceError::NullHandlerForSupportedProtocol { protocol } => {
-                write!(f, "Null handler for supported protocol {:?}", protocol)
+                write!(f, "Null handler for supported protocol {protocol:?}")
             }
-            Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol { protocol } => write!(
-                f,
-                "Non-null handler for unsupported protocol {:?}",
-                protocol
-            ),
+            Sv2ClientServiceError::NonNullHandlerForUnsupportedProtocol { protocol } => {
+                write!(f, "Non-null handler for unsupported protocol {protocol:?}")
+            }
             Sv2ClientServiceError::ServiceNotReady => write!(f, "Service not ready"),
             Sv2ClientServiceError::FailedToInitiateConnection { protocol } => {
-                write!(f, "Failed to initiate connection with {:?}", protocol)
+                write!(f, "Failed to initiate connection with {protocol:?}")
             }
             Sv2ClientServiceError::FailedToStartMiningHandler => {
                 write!(f, "Failed to start mining handler")

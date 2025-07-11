@@ -464,8 +464,7 @@ where
         let to_str0_255 = |s: String, field: &str| {
             s.clone().into_bytes().try_into().map_err(|_| {
                 RequestToSv2ClientError::StringConversionError(format!(
-                    "Failed to convert {} '{}' to fixed-size array",
-                    field, s
+                    "Failed to convert {field} '{s}' to fixed-size array"
                 ))
             })
         };
@@ -1019,8 +1018,7 @@ where
                                         .try_into()
                                         .map_err(|_| {
                                             RequestToSv2ClientError::StringConversionError(format!(
-                                            "Failed to convert user_identity '{}' to fixed-size array",
-                                            user_identity
+                                            "Failed to convert user_identity '{user_identity}' to fixed-size array"
                                         ))
                                         })?,
                                     nominal_hash_rate,
@@ -1069,8 +1067,7 @@ where
                                         .try_into()
                                         .map_err(|_| {
                                             RequestToSv2ClientError::StringConversionError(format!(
-                                            "Failed to convert user_identity '{}' to fixed-size array",
-                                            user_identity,
+                                            "Failed to convert user_identity '{user_identity}' to fixed-size array",
                                         ))
                                         })?,
                                     nominal_hash_rate,
