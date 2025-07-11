@@ -10,8 +10,8 @@ tokio-util = "0.7.15"
 tracing = "0.1"
 hex = "0.4.3"
 tracing-subscriber = "0.3.19"
-stratum-common = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
-key-utils = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+stratum-common = { git = "https://github.com/stratum-mining/stratum", branch = "v1.4.0" }
+key-utils = { git = "https://github.com/stratum-mining/stratum", branch = "v1.4.0" }
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 toml = "0.8"
@@ -21,4 +21,4 @@ bitcoin = "0.32.5"
 dashmap = "6.1.0"
 
 [dev-dependencies]
-integration_tests_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "main" }
+integration_tests_sv2 = { git = "https://github.com/stratum-mining/stratum", branch = "v1.4.0" }
