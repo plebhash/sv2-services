@@ -1575,8 +1575,6 @@ mod tests {
             Ok(ResponseFromSv2Server::Ok)
         }
 
-        async fn shutdown(&mut self) {}
-
         async fn on_new_template(
             &self,
             _m: NewTemplate<'static>,

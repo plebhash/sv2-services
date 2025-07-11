@@ -25,9 +25,6 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         Ok(ResponseFromSv2Server::Ok)
     }
 
-    // no spawned tasks, therefore empty shutdown method
-    async fn shutdown(&mut self) {}
-
     async fn on_new_template(
         &self,
         m: NewTemplate<'static>,

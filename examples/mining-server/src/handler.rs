@@ -33,9 +33,6 @@ impl Sv2MiningServerHandler for MyMiningServerHandler {
         Ok(ResponseFromSv2Server::Ok)
     }
 
-    // no spawned tasks, therefore empty shutdown method
-    async fn shutdown(&mut self) {}
-
     fn setup_connection_success_flags(&self) -> u32 {
         0
     }

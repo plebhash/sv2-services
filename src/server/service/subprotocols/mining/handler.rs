@@ -22,9 +22,6 @@ pub trait Sv2MiningServerHandler {
         Output = Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError>,
     > + Send;
 
-    /// Should be used to kill any spawned tasks
-    fn shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send;
-
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ServerError>>;
 
     fn setup_connection_success_flags(&self) -> u32;
@@ -130,11 +127,6 @@ impl Sv2MiningServerHandler for NullSv2MiningServerHandler {
 
     async fn start(&mut self) -> Result<ResponseFromSv2Server<'static>, RequestToSv2ServerError> {
         unimplemented!("NullSv2MiningServerHandler does not implement start");
-    }
-
-    /// Shutdown the subprotocol handler
-    async fn shutdown(&mut self) {
-        unimplemented!("NullSv2MiningServerHandler does not implement shutdown")
     }
 
     /// The subprotocol flags to be used on SetupConnectionSuccess
