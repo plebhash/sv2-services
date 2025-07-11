@@ -29,8 +29,12 @@ jobs:
         with:
           rust-version: stable
 
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked
+
+
       - name: Run tests on the root project
-        run: cargo test --workspace
+        run: cargo nextest run
 
       - name: Run tests on example crates
         run: |
