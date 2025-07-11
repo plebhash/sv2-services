@@ -38,22 +38,19 @@ impl fmt::Display for Sv2ServerServiceError {
             Sv2ServerServiceError::NullHandlerForSupportedProtocol { protocol } => {
                 write!(
                     f,
-                    "Protocol {:?} is supported but a null handler was provided",
-                    protocol
+                    "Protocol {protocol:?} is supported but a null handler was provided"
                 )
             }
             Sv2ServerServiceError::NonNullHandlerForUnsupportedProtocol { protocol } => {
                 write!(
                     f,
-                    "Protocol {:?} is not supported but a non-null handler was provided",
-                    protocol
+                    "Protocol {protocol:?} is not supported but a non-null handler was provided"
                 )
             }
             Sv2ServerServiceError::MissingConfigForSupportedProtocol { protocol } => {
                 write!(
                     f,
-                    "Protocol {:?} is supported but no config was provided",
-                    protocol
+                    "Protocol {protocol:?} is supported but no config was provided"
                 )
             }
             Sv2ServerServiceError::FailedToStartMiningHandler => {
@@ -65,7 +62,7 @@ impl fmt::Display for Sv2ServerServiceError {
             // Sv2ServerServiceError::FailedToStartTemplateDistributionHandler => {
             //     write!(f, "Failed to start template distribution handler")
             // }
-            Sv2ServerServiceError::Other(msg) => write!(f, "{}", msg),
+            Sv2ServerServiceError::Other(msg) => write!(f, "{msg}"),
             Sv2ServerServiceError::TcpServerError => write!(f, "TCP server failed to start"),
         }
     }

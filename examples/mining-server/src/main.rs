@@ -77,7 +77,7 @@ mod tests {
         let mut server_clone = server.clone();
         tokio::spawn(async move {
             if let Err(e) = server_clone.start().await {
-                eprintln!("Server error: {}", e);
+                eprintln!("Server error: {e}");
             }
         });
 
