@@ -1,6 +1,6 @@
 # Template Distribution Client Example
 
-This example demonstrates some basic patterns for using `tower-stratum` to build a Sv2 Client Service, with focus on the Template Distribution Protocol.
+This example demonstrates some basic patterns for using `sv2-services` to build a Sv2 Client Service, with focus on the Template Distribution Protocol.
 
 It connects to a Sv2 Template Provider Service and simply logs into the terminal the `NewTemplate` and `SetNewPrevHash` messages that it receives.
 

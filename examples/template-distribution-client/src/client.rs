@@ -1,12 +1,11 @@
 use crate::config::MyTemplateDistributionClientConfig;
 use crate::handler::MyTemplateDistributionHandler;
 use anyhow::{Result, anyhow};
+use sv2_services::client::service::Sv2ClientService;
+use sv2_services::client::service::config::Sv2ClientServiceConfig;
+use sv2_services::client::service::config::Sv2ClientServiceTemplateDistributionConfig;
+use sv2_services::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use tokio_util::sync::CancellationToken;
-use tower::ServiceExt;
-use tower_stratum::client::service::Sv2ClientService;
-use tower_stratum::client::service::config::Sv2ClientServiceConfig;
-use tower_stratum::client::service::config::Sv2ClientServiceTemplateDistributionConfig;
-use tower_stratum::client::service::subprotocols::mining::handler::NullSv2MiningClientHandler;
 use tracing::info;
 
 #[derive(Clone)]
@@ -67,11 +66,6 @@ impl MyTemplateDistributionClient {
             .start()
             .await
             .map_err(|e| anyhow!("Failed to start Sv2ClientService: {:?}", e))?;
-
-        self.sv2_client_service
-            .ready()
-            .await
-            .map_err(|e| anyhow!("Service is not ready: {:?}", e))?;
 
         Ok(())
     }

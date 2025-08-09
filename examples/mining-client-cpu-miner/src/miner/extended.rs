@@ -1,10 +1,10 @@
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::roles_logic_sv2::channels::client::error::ExtendedChannelError;
-use tower_stratum::roles_logic_sv2::channels::client::extended::ExtendedChannel;
-use tower_stratum::roles_logic_sv2::mining_sv2::{
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::roles_logic_sv2::channels::client::error::ExtendedChannelError;
+use sv2_services::roles_logic_sv2::channels::client::extended::ExtendedChannel;
+use sv2_services::roles_logic_sv2::mining_sv2::{
     NewExtendedMiningJob, SetNewPrevHash, SubmitSharesExtended, Target,
 };
-use tower_stratum::roles_logic_sv2::{
+use sv2_services::roles_logic_sv2::{
     parsers::Mining,
     utils::{merkle_root_from_path, u256_to_block_hash},
 };
@@ -22,7 +22,7 @@ use tracing::{debug, error, info};
 
 pub struct ExtendedMiner {
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     is_mining: bool,
@@ -31,13 +31,13 @@ pub struct ExtendedMiner {
 impl ExtendedMiner {
     pub fn new(
         extended_channel: ExtendedChannel<'static>,
-        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
         Self {
             extended_channel: Arc::new(RwLock::new(extended_channel)),
-            request_injector,
+            event_injector,
             global_cancellation_token,
             miner_cancellation_token,
             is_mining: false,
@@ -71,7 +71,7 @@ impl ExtendedMiner {
                 self.miner_cancellation_token = CancellationToken::new();
             }
 
-            let request_injector = self.request_injector.clone();
+            let event_injector = self.event_injector.clone();
             let global_cancellation_token = self.global_cancellation_token.clone();
             let miner_cancellation_token = self.miner_cancellation_token.clone();
 
@@ -80,7 +80,7 @@ impl ExtendedMiner {
             tokio::spawn(async move {
                 mine_job(
                     extended_channel,
-                    request_injector,
+                    event_injector,
                     global_cancellation_token,
                     miner_cancellation_token,
                 )
@@ -106,7 +106,7 @@ impl ExtendedMiner {
         }
 
         // Extract needed values from self before spawning
-        let request_injector = self.request_injector.clone();
+        let event_injector = self.event_injector.clone();
         let global_cancellation_token = self.global_cancellation_token.clone();
         let miner_cancellation_token = self.miner_cancellation_token.clone();
         let extended_channel = self.extended_channel.clone();
@@ -114,7 +114,7 @@ impl ExtendedMiner {
         tokio::spawn(async move {
             mine_job(
                 extended_channel,
-                request_injector,
+                event_injector,
                 global_cancellation_token,
                 miner_cancellation_token,
             )
@@ -134,7 +134,7 @@ impl ExtendedMiner {
 
 async fn mine_job(
     extended_channel: Arc<RwLock<ExtendedChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
 ) {
@@ -229,7 +229,7 @@ async fn mine_job(
                     let _ = extended_channel_guard.validate_share(share.clone());
                     drop(extended_channel_guard);
 
-                    match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesExtended(share.clone())))).await {
+                    match event_injector.send(Sv2ClientEvent::SendMessageToMiningServer(Box::new(Mining::SubmitSharesExtended(share.clone())))).await {
                         Ok(_) => {
                             info!("Submitting share: {:?}", share);
                         }

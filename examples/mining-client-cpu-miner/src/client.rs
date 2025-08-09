@@ -6,13 +6,13 @@ use bitcoin::{
     blockdata::block::{Header, Version},
     hashes::sha256d::Hash,
 };
+use sv2_services::client::service::Sv2ClientService;
+use sv2_services::client::service::config::Sv2ClientServiceConfig;
+use sv2_services::client::service::config::Sv2ClientServiceMiningConfig;
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
+use sv2_services::roles_logic_sv2::utils::u256_to_block_hash;
 use tokio_util::sync::CancellationToken;
-use tower_stratum::client::service::Sv2ClientService;
-use tower_stratum::client::service::config::Sv2ClientServiceConfig;
-use tower_stratum::client::service::config::Sv2ClientServiceMiningConfig;
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::client::service::subprotocols::template_distribution::handler::NullSv2TemplateDistributionClientHandler;
-use tower_stratum::roles_logic_sv2::utils::u256_to_block_hash;
 use tracing::{error, info};
 
 #[derive(Clone)]
@@ -46,7 +46,7 @@ impl MyMiningClient {
         let template_distribution_handler = NullSv2TemplateDistributionClientHandler;
 
         let cancellation_token = CancellationToken::new();
-        let (tx, rx) = async_channel::unbounded::<RequestToSv2Client<'static>>();
+        let (tx, rx) = async_channel::unbounded::<Sv2ClientEvent<'static>>();
 
         let nominal_hashrate = measure_hashrate().await;
 
@@ -59,7 +59,7 @@ impl MyMiningClient {
             cancellation_token.clone(),
         );
 
-        let sv2_client_service = Sv2ClientService::new_with_request_injector(
+        let sv2_client_service = Sv2ClientService::new_with_event_injector(
             service_config,
             mining_handler,
             template_distribution_handler,

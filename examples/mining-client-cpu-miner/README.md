@@ -1,6 +1,6 @@
 # Mining Client CPU Miner Example
 
-This example demonstrates some basic patterns for using `tower-stratum` to build a Sv2 Client Service, with focus on the Mining Protocol.
+This example demonstrates some basic patterns for using `sv2-services` to build a Sv2 Client Service, with focus on the Mining Protocol.
 
 More specifically, we implement a CPU miner.
 

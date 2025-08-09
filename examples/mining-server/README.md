@@ -1,6 +1,6 @@
 # Mining Server Example
 
-This example demonstrates some basic patterns for using `tower-stratum` to build a Sv2 Server Service, with focus on the Mining Protocol.
+This example demonstrates some basic patterns for using `sv2-services` to build a Sv2 Server Service, with focus on the Mining Protocol.
 
 It listens for clients trying to open Standard Channels (via `OpenStandardMiningChannel`), and simply responds with a `OpenStandardMiningChannel.Success`.
 

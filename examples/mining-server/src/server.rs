@@ -2,11 +2,12 @@ use crate::config::MyMiningServerConfig;
 use crate::handler::MyMiningServerHandler;
 use anyhow::Result;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use sv2_services::Sv2Service;
+use sv2_services::server::service::Sv2ServerService;
+use sv2_services::server::service::config::Sv2ServerServiceConfig;
+use sv2_services::server::service::config::Sv2ServerServiceMiningConfig;
+use sv2_services::server::service::config::Sv2ServerTcpConfig;
 use tokio_util::sync::CancellationToken;
-use tower_stratum::server::service::Sv2ServerService;
-use tower_stratum::server::service::config::Sv2ServerServiceConfig;
-use tower_stratum::server::service::config::Sv2ServerServiceMiningConfig;
-use tower_stratum::server::service::config::Sv2ServerTcpConfig;
 use tracing::info;
 
 #[derive(Clone)]

@@ -1,10 +1,10 @@
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::roles_logic_sv2::channels::client::error::StandardChannelError;
-use tower_stratum::roles_logic_sv2::channels::client::standard::StandardChannel;
-use tower_stratum::roles_logic_sv2::mining_sv2::{
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::roles_logic_sv2::channels::client::error::StandardChannelError;
+use sv2_services::roles_logic_sv2::channels::client::standard::StandardChannel;
+use sv2_services::roles_logic_sv2::mining_sv2::{
     NewMiningJob, SetNewPrevHash, SubmitSharesStandard, Target,
 };
-use tower_stratum::roles_logic_sv2::{parsers::Mining, utils::u256_to_block_hash};
+use sv2_services::roles_logic_sv2::{parsers::Mining, utils::u256_to_block_hash};
 
 use bitcoin::{
     CompactTarget,
@@ -19,7 +19,7 @@ use tracing::{debug, error, info};
 
 pub struct StandardMiner {
     standard_channel: Arc<RwLock<StandardChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
     is_mining: bool,
@@ -28,13 +28,13 @@ pub struct StandardMiner {
 impl StandardMiner {
     pub fn new(
         standard_channel: StandardChannel<'static>,
-        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
         global_cancellation_token: CancellationToken,
     ) -> Self {
         let miner_cancellation_token = CancellationToken::new();
         Self {
             standard_channel: Arc::new(RwLock::new(standard_channel)),
-            request_injector,
+            event_injector,
             global_cancellation_token,
             miner_cancellation_token,
             is_mining: false,
@@ -65,7 +65,7 @@ impl StandardMiner {
                 self.miner_cancellation_token = CancellationToken::new();
             }
 
-            let request_injector = self.request_injector.clone();
+            let event_injector = self.event_injector.clone();
             let global_cancellation_token = self.global_cancellation_token.clone();
             let miner_cancellation_token = self.miner_cancellation_token.clone();
 
@@ -74,7 +74,7 @@ impl StandardMiner {
             tokio::spawn(async move {
                 mine_job(
                     standard_channel,
-                    request_injector,
+                    event_injector,
                     global_cancellation_token,
                     miner_cancellation_token,
                 )
@@ -100,7 +100,7 @@ impl StandardMiner {
         }
 
         // Extract needed values from self before spawning
-        let request_injector = self.request_injector.clone();
+        let event_injector = self.event_injector.clone();
         let global_cancellation_token = self.global_cancellation_token.clone();
         let miner_cancellation_token = self.miner_cancellation_token.clone();
 
@@ -109,7 +109,7 @@ impl StandardMiner {
         tokio::spawn(async move {
             mine_job(
                 standard_channel,
-                request_injector,
+                event_injector,
                 global_cancellation_token,
                 miner_cancellation_token,
             )
@@ -129,7 +129,7 @@ impl StandardMiner {
 
 async fn mine_job(
     standard_channel: Arc<RwLock<StandardChannel<'static>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     global_cancellation_token: CancellationToken,
     miner_cancellation_token: CancellationToken,
 ) {
@@ -213,7 +213,7 @@ async fn mine_job(
                     let _ = standard_channel_guard.validate_share(share.clone());
                     drop(standard_channel_guard);
 
-                    match request_injector.send(RequestToSv2Client::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
+                    match event_injector.send(Sv2ClientEvent::SendMessageToMiningServer(Box::new(Mining::SubmitSharesStandard(share.clone())))).await {
                         Ok(_) => {
                             info!("Submitting share: {:?}", share);
                         }

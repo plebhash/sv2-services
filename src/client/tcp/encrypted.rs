@@ -8,9 +8,6 @@ use tokio::net::TcpStream;
 use crate::Sv2MessageIo;
 
 /// a TCP client that connects to a server **with** Sv2 noise encryption
-///
-/// Note: [`Sv2EncryptedTcpClient`] is NOT a [`tower::Service`],
-/// but rather a helper primitive to facilitate establishing encrypted TCP connections
 #[derive(Debug, Clone)]
 pub struct Sv2EncryptedTcpClient {
     /// IO of Sv2 Message Frames

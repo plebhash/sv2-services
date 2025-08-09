@@ -1,22 +1,18 @@
 <h1 align="center">
-  <br>
-  <img width="300" src="tower-stratum.png">
-  <br>
-tower-stratum
+sv2-services
 <br>
 </h1>
 
 <p align="center">
-  <a href="https://codecov.io/gh/plebhash/tower-stratum" > 
-    <img src="https://codecov.io/gh/plebhash/tower-stratum/graph/badge.svg?token=6ME38GTAIP"/> 
+  <a href="https://codecov.io/gh/plebhash/sv2-services" > 
+    <img src="https://codecov.io/gh/plebhash/sv2-services/graph/badge.svg?token=6ME38GTAIP"/> 
   </a>
 </p>
 <p align="center">
-🦀 Tower middleware for Bitcoin mining over <a href="https://github.com/stratum-mining/stratum">Stratum V2 Reference Implementation</a> ⛏️
+🦀 Service-oriented framework for Bitcoin mining over <a href="https://github.com/stratum-mining/stratum">Stratum V2 Reference Implementation</a> ⛏️
 </p>
 
-This crate aims to provide a robust middleware API for building Bitcoin mining apps based on:
-- [Tower](https://docs.rs/tower/latest/tower/): an asynchronous middleware framework for Rust
+This crate aims to provide a robust Service-oriented framework for building Bitcoin mining apps based on:
 - [Tokio](https://tokio.rs/): an asynchronous runtime for Rust
 - [Stratum V2 Reference Implementation](https://github.com/stratum-mining/stratum): the reference implementation of the Stratum V2 protocol
 
@@ -26,11 +22,13 @@ Note: currently development focus is on Stratum V2 (Sv2). While theoretically po
 
 # Scope
 
-`tower-stratum` provides [`tower::Service`](https://docs.rs/tower/latest/tower/trait.Service.html)s for building apps to be executed under `tokio` runtimes.
+`sv2-services` provides Service abstractions for building apps to be executed under `tokio` runtimes.
 
 They can be divided in two categories:
-- Client-side (`Sv2ClientService`)
-- Server-side (`Sv2ServerService`)
+- `Sv2ClientService`
+- `Sv2ServerService`
+
+Both implement the `Sv2Service` trait, which unifies abstractions around the notion of a Sv2 Service.
 
 The user is expected to implement handlers for the different Sv2 subprotocols, and use simple high-level APIs to compose Sv2 applications that are able to exchange Sv2 messages and behave according to the handler.
 
@@ -38,13 +36,13 @@ The user is expected to implement handlers for the different Sv2 subprotocols, a
 
 ![](./docs/Sv2ClientService.png)
 
-`Sv2ClientService<M, J, T>` is a `tower::Service` representing a Sv2 Client.
+`Sv2ClientService<M, J, T>` is a `Sv2Service` representing a Sv2 Client.
 
 It's able to establish a TCP connection with the Server and exchange `SetupConnection` messages to negotiate the Sv2 Connection parameters according to the user configurations.
 
 Noise encryption over the TCP connections is optional.
 
-It listens for messages from the server, generating `type Request = RequestToSv2Client` for a `Service::call`, which triggers execution of the different subprotocol handlers (implemented by the user) and returns some `type Response = ResponseFromSv2Client`.
+It listens for messages from the server, generating `type Event = Sv2ClientEvent` for a `Sv2Service::handle`, which triggers execution of the different subprotocol handlers (implemented by the user) and returns some `type Outcome = Sv2ClientOutcome`.
 
 The user is expected to set the different generic parameters `<M, J, T>` with implementations for the handler traits of the different subprotocols:
 - `M` must implement `trait Sv2MiningClientHandler`
@@ -71,13 +69,13 @@ Whenever `Sv2ClientService<M, J, T>` is loaded with one of these Null handler im
 
 ![](./docs/Sv2ServerService.png)
 
-`Sv2ServerService<M, J, T>` is a `tower::Service` representing a Sv2 Server.
+`Sv2ServerService<M, J, T>` is a `Sv2Service` representing a Sv2 Server.
 
 It's able to listen for TCP connections and exchange `SetupConnection` messages to negotiate the Sv2 Connection parameters according to the user configurations.
 
 Noise encryption over the TCP connections is optional.
 
-It listens for messages from multiple clients, generating `type Request = RequestToSv2Server` for a `Service::call`, which triggers execution of the different subprotocol handlers (implemented by the user) and returns some `type Response = ResponseFromSv2Server`.
+It listens for messages from multiple clients, generating `type Event = Sv2ServerEvent` for a `Sv2Service::handle`, which triggers execution of the different subprotocol handlers (implemented by the user) and returns some `type Outcome = Sv2ServerOutcome`.
 
 Inactive clients have their connections killed and are removed from memory after some predefined time.
 
@@ -104,9 +102,9 @@ Whenever `Sv2ServiceService<M, J, T>` is loaded with one of these Null handler i
 
 ## Inter-Service Communication
 
-`tower-stratum` supports inter-service communication between a `Sv2ServerService` and a `Sv2ClientService` pair through the sibling IO mechanism. This allows for building complex Sv2 applications that require bidirectional communication between a server and client service running **within the same application**.
+`sv2-services` supports inter-service communication between a `Sv2ServerService` and a `Sv2ClientService` pair through the sibling IO mechanism. This allows for building complex Sv2 applications that require bidirectional communication between a server and client service running **within the same application**.
 
-`tower-stratum` services are called "siblings" when they are tightly coupled with a server/client counterpart **within the same application**. This distinction is very important, and should not be confused with server/client communication across the wire, where server and client are actually different applications.
+`sv2-services` services are called "siblings" when they are tightly coupled with a server/client counterpart **within the same application**. This distinction is very important, and should not be confused with server/client communication across the wire, where server and client are actually different applications.
 
 The notion of sibling services allows for different use-cases, such as:
 - Mining Server + Mining Client (e.g.: Proxy)
@@ -144,31 +142,31 @@ let client = Sv2ClientService::new_from_sibling_io(
 
 Services can communicate with their siblings by sending requests via the sibling IO channels, which are triggered with special request variants.
 
-For example, here's an illustration of a `Sv2ServerService` receiving a `RequestToSv2Server::SendRequestToSiblingClientService`, which results in `Sv2ClientService` receiving some specific `RequestToSv2Client`.
+For example, here's an illustration of a `Sv2ServerService` receiving a `Sv2ServerEvent::SendEventToSiblingClientService`, which results in `Sv2ClientService` receiving some specific `Sv2ClientEvent`.
 
 Please note that these two sibling services belong to the same application.
 
 ```rust
-// Server sending request to its sibling client
-let response = server.call(RequestToSv2Server::SendRequestToSiblingClientService(
-    RequestToSv2Client::SomeRequest(...),
+// Server sending event to its sibling client
+let response = server.handle(Sv2ServerEvent::SendEventToSiblingClientService(
+    Sv2ClientEvent::SomeEvent(...),
 )).await?;
 ```
 
-![](./docs/SendRequestToSiblingClientService.png)
+![](./docs/SendEventToSiblingClientService.png)
 
-Alternatively, here's an illustration of a `Sv2ClientService` receiving a `RequestToSv2Client::SendRequestToSiblingServerService`, which results in `Sv2ServerService` receiving some specific `RequestToSv2Server`.
+Alternatively, here's an illustration of a `Sv2ClientService` receiving a `Sv2ClientEvent::SendEventToSiblingServerService`, which results in `Sv2ServerService` receiving some specific `Sv2ServerEvent`.
 
 Please note that these two sibling services belong to the same application.
 
 ```rust
-// Client sending request to its sibling server
+// Client sending event to its sibling server
 let response = client.call(RequestToSv2Client::SendRequestToSiblingServerService(
-    RequestToSv2Server::SomeRequest(...),
+    Sv2ServerEvent::SomeEvent(...),
 )).await?;
 ```
 
-![](./docs/SendRequestToSiblingServerService.png)
+![](./docs/SendEventToSiblingServerService.png)
 
 # License
 

@@ -1,7 +1,6 @@
 //! # Introduction
 //!
-//! This crate aims to provide a robust middleware API for building Bitcoin mining apps based on:
-//!- [Tower](https://docs.rs/tower/latest/tower/): an asynchronous middleware framework for Rust
+//! This crate aims to provide a Service-Oriented framework for building Bitcoin mining apps based on:
 //!- [Tokio](https://tokio.rs/): an asynchronous runtime for Rust
 //!- [Stratum V2 Reference Implementation](https://github.com/stratum-mining/stratum): the reference implementation of the Stratum V2 protocol
 //!
@@ -21,13 +20,14 @@ use stratum_common::roles_logic_sv2::{
     },
 };
 
+use std::future::Future;
+
 pub use key_utils;
 pub use stratum_common::roles_logic_sv2;
-pub use tower;
 
 /// Client-side modules for establishing and managing Stratum V2 connections.
 ///
-/// This module provides the client implementation of the Stratum V2 protocol, including:
+/// This module provides the client service implementation of the Stratum V2 protocol, including:
 /// - TCP connection handlers (both encrypted and unencrypted)
 /// - Service implementations for different Stratum V2 subprotocols
 /// - Configuration options for client behavior
@@ -35,12 +35,41 @@ pub mod client;
 
 /// Server-side modules for accepting and handling Stratum V2 client connections.
 ///
-/// This module provides the server implementation of the Stratum V2 protocol, including:
+/// This module provides the server service implementation of the Stratum V2 protocol, including:
 /// - TCP connection handlers (both encrypted and unencrypted)
 /// - Service implementations for different Stratum V2 subprotocols
 /// - Client session management
 /// - Configuration options for server behavior
 pub mod server;
+
+/// Core service abstraction for Stratum V2 protocol implementations.
+///
+/// [`Sv2Service`] represents a long-running, stateful service that handles Stratum V2 protocol
+/// events and produces outcomes. `Sv2Service` is designed for protocol-specific,
+/// actor-like services that manage:
+///
+/// - **Connection lifecycles**: TCP connections, handshakes, and session management
+/// - **Multi-protocol coordination**: Handling Mining, Job Declaration, and Template Distribution subprotocols
+/// - **Inter-service communication**: Sibling service coordination for applications that act as both server and client
+///
+/// ## Event-Driven Architecture
+///
+/// Services process [`Event`](Self::Event)s which represent protocol messages, triggers, or internal
+/// state changes. Each event produces an [`Outcome`](Self::Outcome) which may trigger additional
+/// events, send responses to clients, or coordinate with sibling services.
+pub trait Sv2Service {
+    type Event;
+    type Outcome;
+    type ServiceError;
+    type EventError;
+
+    fn handle(
+        &mut self,
+        event: Self::Event,
+    ) -> impl Future<Output = Result<Self::Outcome, Self::EventError>> + Send;
+
+    fn start(&mut self) -> impl Future<Output = Result<(), Self::ServiceError>> + Send;
+}
 
 /// alias to abstract away [`codec_sv2::StandardEitherFrame`] and [`roles_logic_sv2::parsers::AnyMessage`]
 pub type Sv2MessageFrame = StandardEitherFrame<AnyMessage<'static>>;
@@ -49,13 +78,6 @@ pub type Sv2MessageFrame = StandardEitherFrame<AnyMessage<'static>>;
 pub type StandardSv2MessageFrame = StandardSv2Frame<AnyMessage<'static>>;
 
 /// Sv2 Message IO as [`async_channel`] of [`Sv2MessageFrame`]
-///
-/// Note: [`Sv2MessageIo`] is NOT a [`tower::Service`],
-/// but rather a helper primitive to abstract IO from:
-/// - [`crate::client::tcp::encrypted::Sv2EncryptedTcpClient`]
-/// - [`crate::client::tcp::unencrypted::Sv2UnencryptedTcpClient`]
-/// - [`crate::server::tcp::encrypted::start_encrypted_tcp_server`]
-/// - [`crate::server::tcp::unencrypted::Sv2UnencryptedTcpServer`]
 #[derive(Debug, Clone)]
 pub struct Sv2MessageIo {
     // receiver channel of Sv2 Message Frames

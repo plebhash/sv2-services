@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use tower_stratum::{
+use sv2_services::{
     client::service::config::{Sv2ClientServiceConfig, Sv2ClientServiceTemplateDistributionConfig},
     key_utils::{Secp256k1PublicKey, Secp256k1SecretKey},
     server::service::config::{

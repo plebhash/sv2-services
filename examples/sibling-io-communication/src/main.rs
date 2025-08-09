@@ -1,14 +1,15 @@
 use anyhow::Ok;
 use integration_tests_sv2::start_template_provider;
 use mining_server_handler::MyMiningServerHandler;
-use template_distribution_handler::MyTemplateDistributionHandler;
-use tokio_util::sync::CancellationToken;
-use tower_stratum::{
+use sv2_services::{
+    Sv2Service,
     client::service::{
         Sv2ClientService, subprotocols::mining::handler::NullSv2MiningClientHandler,
     },
     server::service::Sv2ServerService,
 };
+use template_distribution_handler::MyTemplateDistributionHandler;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 mod configs;
 mod mining_server_handler;
@@ -70,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     // Create the Sv2ServerService and Sv2ClientService using the handlers.
 
     // The Sv2ServerService returns a [`Sv2SiblingServerServiceIo`] object.
-    // This object is used to send and receive requests to/from a sibling [`tower_stratum::client::service::Sv2ClientService`].
+    // This object is used to send and receive requests to/from a sibling [`sv2_services::client::service::Sv2ClientService`].
     let (
         mut server_service,
         sibling_server_io, // <----- SiblingIO is created here.

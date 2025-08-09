@@ -1,19 +1,18 @@
 use crate::client::format_number_with_underscores;
 use dashmap::DashMap;
-use std::task::{Context, Poll};
 use stratum_common::roles_logic_sv2::mining_sv2::{
     CloseChannel, NewExtendedMiningJob, NewMiningJob, OpenExtendedMiningChannelSuccess,
     OpenMiningChannelError, OpenStandardMiningChannelSuccess, SetCustomMiningJobError,
     SetCustomMiningJobSuccess, SetExtranoncePrefix, SetGroupChannel, SetNewPrevHash, SetTarget,
     SubmitSharesError, SubmitSharesSuccess, UpdateChannelError,
 };
-use tower_stratum::client::service::request::RequestToSv2Client;
-use tower_stratum::client::service::request::RequestToSv2ClientError;
-use tower_stratum::client::service::response::ResponseFromSv2Client;
-use tower_stratum::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
-use tower_stratum::client::service::subprotocols::mining::trigger::MiningClientTrigger;
-use tower_stratum::roles_logic_sv2::channels::client::extended::ExtendedChannel;
-use tower_stratum::roles_logic_sv2::channels::client::standard::StandardChannel;
+use sv2_services::client::service::event::Sv2ClientEvent;
+use sv2_services::client::service::event::Sv2ClientEventError;
+use sv2_services::client::service::outcome::Sv2ClientOutcome;
+use sv2_services::client::service::subprotocols::mining::handler::Sv2MiningClientHandler;
+use sv2_services::client::service::subprotocols::mining::trigger::MiningClientTrigger;
+use sv2_services::roles_logic_sv2::channels::client::extended::ExtendedChannel;
+use sv2_services::roles_logic_sv2::channels::client::standard::StandardChannel;
 
 use crate::miner::extended::ExtendedMiner;
 use crate::miner::standard::StandardMiner;
@@ -32,7 +31,7 @@ pub struct MyMiningClientHandler {
     n_standard_channels: u8,
     extended_channels: Arc<DashMap<u32, Arc<RwLock<ExtendedMiner>>>>,
     standard_channels: Arc<DashMap<u32, Arc<RwLock<StandardMiner>>>>,
-    request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+    event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
     cancellation_token: CancellationToken,
 }
 
@@ -42,7 +41,7 @@ impl MyMiningClientHandler {
         nominal_hashrate: f32,
         n_extended_channels: u8,
         n_standard_channels: u8,
-        request_injector: async_channel::Sender<RequestToSv2Client<'static>>,
+        event_injector: async_channel::Sender<Sv2ClientEvent<'static>>,
         cancellation_token: CancellationToken,
     ) -> Self {
         Self {
@@ -52,19 +51,15 @@ impl MyMiningClientHandler {
             n_standard_channels,
             extended_channels: Arc::new(DashMap::with_capacity(n_extended_channels as usize)),
             standard_channels: Arc::new(DashMap::with_capacity(n_standard_channels as usize)),
-            request_injector,
+            event_injector,
             cancellation_token,
         }
     }
 }
 
 impl Sv2MiningClientHandler for MyMiningClientHandler {
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), RequestToSv2ClientError>> {
-        Poll::Ready(Ok(()))
-    }
-
-    async fn start(&mut self) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        let mut requests = Vec::new();
+    async fn start(&mut self) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        let mut events = Vec::new();
 
         let nominal_hashrate_per_channel =
             self.nominal_hashrate / (self.n_standard_channels + self.n_extended_channels) as f32;
@@ -74,7 +69,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 "Sending OpenStandardMiningChannel with nominal hashrate: {} H/s",
                 format_number_with_underscores(nominal_hashrate_per_channel as u64)
             );
-            requests.push(RequestToSv2Client::MiningTrigger(
+            events.push(Sv2ClientEvent::MiningTrigger(
                 MiningClientTrigger::OpenStandardMiningChannel(
                     i as u32,
                     self.user_identity.clone(),
@@ -89,7 +84,7 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 "Sending OpenExtendedMiningChannel with nominal hashrate: {} H/s",
                 format_number_with_underscores(nominal_hashrate_per_channel as u64)
             );
-            requests.push(RequestToSv2Client::MiningTrigger(
+            events.push(Sv2ClientEvent::MiningTrigger(
                 MiningClientTrigger::OpenExtendedMiningChannel(
                     (i + self.n_standard_channels) as u32,
                     self.user_identity.clone(),
@@ -99,17 +94,17 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
                 ),
             ));
         }
-        Ok(ResponseFromSv2Client::TriggerNewRequest(Box::new(
-            RequestToSv2Client::MultipleRequests(Box::new(requests)),
+        Ok(Sv2ClientOutcome::TriggerNewEvent(Box::new(
+            Sv2ClientEvent::MultipleEvents(Box::new(events)),
         )))
     }
 
     async fn handle_open_standard_mining_channel_success(
         &mut self,
         open_standard_mining_channel_success: OpenStandardMiningChannelSuccess<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenStandardMiningChannel.Success: {:?}",
+            "Received OpenStandardMiningChannel.Success: {}",
             open_standard_mining_channel_success
         );
 
@@ -127,22 +122,22 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             open_standard_mining_channel_success.channel_id,
             Arc::new(RwLock::new(StandardMiner::new(
                 standard_channel.clone(),
-                self.request_injector.clone(),
+                self.event_injector.clone(),
                 self.cancellation_token.clone(),
             ))),
         );
 
         debug!("Created new Standard Channel: {:?}", standard_channel);
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_open_extended_mining_channel_success(
         &mut self,
         open_extended_mining_channel_success: OpenExtendedMiningChannelSuccess<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenExtendedMiningChannel.Success: {:?}",
+            "Received OpenExtendedMiningChannel.Success: {}",
             open_extended_mining_channel_success
         );
 
@@ -162,40 +157,40 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             open_extended_mining_channel_success.channel_id,
             Arc::new(RwLock::new(ExtendedMiner::new(
                 extended_channel.clone(),
-                self.request_injector.clone(),
+                self.event_injector.clone(),
                 self.cancellation_token.clone(),
             ))),
         );
 
         debug!("Created new Extended Channel: {:?}", extended_channel);
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_open_mining_channel_error(
         &mut self,
         open_standard_mining_channel_error: OpenMiningChannelError<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         info!(
-            "Received OpenMiningChannel.Error: {:?}",
+            "Received OpenMiningChannel.Error: {}",
             open_standard_mining_channel_error
         );
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_update_channel_error(
         &mut self,
         update_channel_error: UpdateChannelError<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("Received UpdateChannel.Error: {:?}", update_channel_error);
-        Ok(ResponseFromSv2Client::Ok)
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received UpdateChannel.Error: {}", update_channel_error);
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_close_channel(
         &mut self,
         close_channel: CloseChannel<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("Received CloseChannel: {:?}", close_channel);
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received CloseChannel: {}", close_channel);
 
         let has_standard_channel = self
             .standard_channels
@@ -227,14 +222,14 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             );
         }
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_set_extranonce_prefix(
         &mut self,
         set_extranonce_prefix: SetExtranoncePrefix<'static>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("received SetExtranoncePrefix: {:?}", set_extranonce_prefix);
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("received SetExtranoncePrefix: {}", set_extranonce_prefix);
 
         let has_standard_channel = self
             .standard_channels
@@ -302,30 +297,30 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             );
         }
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_submit_shares_success(
         &mut self,
         submit_shares_success: SubmitSharesSuccess,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("received SubmitShares.Success: {:?}", submit_shares_success);
-        Ok(ResponseFromSv2Client::Ok)
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("received SubmitShares.Success: {}", submit_shares_success);
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_submit_shares_error(
         &mut self,
         submit_shares_error: SubmitSharesError<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("received SubmitShares.Error: {:?}", submit_shares_error);
-        Ok(ResponseFromSv2Client::Ok)
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("received SubmitShares.Error: {}", submit_shares_error);
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_new_mining_job(
         &mut self,
         new_mining_job: NewMiningJob<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("Received NewMiningJob: {:?}", new_mining_job);
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received NewMiningJob: {}", new_mining_job);
 
         let has_standard_channel = self
             .standard_channels
@@ -351,17 +346,14 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             );
         }
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_new_extended_mining_job(
         &mut self,
         new_extended_mining_job: NewExtendedMiningJob<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!(
-            "Received NewExtendedMiningJob: {:?}",
-            new_extended_mining_job
-        );
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received NewExtendedMiningJob: {}", new_extended_mining_job);
 
         let has_extended_channel = self
             .extended_channels
@@ -388,14 +380,14 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
 
             // todo: start hashing
         }
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_set_new_prev_hash(
         &mut self,
         set_new_prev_hash: SetNewPrevHash<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("Received SetNewPrevHash: {:?}", set_new_prev_hash);
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received SetNewPrevHash: {}", set_new_prev_hash);
 
         let has_standard_channel = self
             .standard_channels
@@ -463,28 +455,28 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             };
         }
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_set_custom_mining_job_success(
         &mut self,
         _set_custom_mining_job_success: SetCustomMiningJobSuccess,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         unimplemented!("CPU Miner never sends SetCustomMiningJob");
     }
 
     async fn handle_set_custom_mining_job_error(
         &mut self,
         _set_custom_mining_job_error: SetCustomMiningJobError<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         unimplemented!("CPU Miner never sends SetCustomMiningJob");
     }
 
     async fn handle_set_target(
         &mut self,
         set_target: SetTarget<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
-        info!("Received SetTarget: {:?}", set_target);
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
+        info!("Received SetTarget: {}", set_target);
 
         let has_standard_channel = self.standard_channels.contains_key(&set_target.channel_id);
         let has_extended_channel = self.extended_channels.contains_key(&set_target.channel_id);
@@ -528,13 +520,13 @@ impl Sv2MiningClientHandler for MyMiningClientHandler {
             );
         }
 
-        Ok(ResponseFromSv2Client::Ok)
+        Ok(Sv2ClientOutcome::Ok)
     }
 
     async fn handle_set_group_channel(
         &mut self,
         _set_group_channel: SetGroupChannel<'_>,
-    ) -> Result<ResponseFromSv2Client<'static>, RequestToSv2ClientError> {
+    ) -> Result<Sv2ClientOutcome<'static>, Sv2ClientEventError> {
         unimplemented!("CPU Miner should never receive SetGroupChannel");
     }
 }
