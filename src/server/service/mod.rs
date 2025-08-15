@@ -841,6 +841,8 @@ where
                                                 }
                                             }
                                             Err(_) => {
+                                                debug!("Client {} message handler task received an error, removing client", client_id);
+                                                service.remove_client(client_id).await;
                                                 break;
                                             }
                                         }
@@ -848,7 +850,6 @@ where
                                 }
                             }
                             debug!("Client {} message handler task ended", client_id);
-                            service.remove_client(client_id).await;
                         });
                     }
                 }
