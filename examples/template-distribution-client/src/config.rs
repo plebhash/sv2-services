@@ -1,8 +1,8 @@
-use key_utils::Secp256k1PublicKey;
 use serde::Deserialize;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
+use sv2_services::key_utils::Secp256k1PublicKey;
 
 #[derive(Deserialize)]
 pub struct MyTemplateDistributionClientConfig {

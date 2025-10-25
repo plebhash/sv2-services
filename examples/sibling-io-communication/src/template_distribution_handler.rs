@@ -1,14 +1,14 @@
 use anyhow::Result;
-use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use sv2_services::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 
-use stratum_common::roles_logic_sv2::template_distribution_sv2::{
-    RequestTransactionDataError, RequestTransactionDataSuccess,
-};
 use sv2_services::client::service::event::Sv2ClientEvent;
 use sv2_services::client::service::event::Sv2ClientEventError;
 use sv2_services::client::service::outcome::Sv2ClientOutcome;
 use sv2_services::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use sv2_services::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
+use sv2_services::roles_logic_sv2::template_distribution_sv2::{
+    RequestTransactionDataError, RequestTransactionDataSuccess,
+};
 use sv2_services::server::service::event::Sv2ServerEvent;
 use sv2_services::server::service::subprotocols::mining::trigger::MiningServerTrigger;
 use tracing::info;

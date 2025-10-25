@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use stratum_common::network_helpers_sv2::noise_connection::Connection;
 use stratum_common::roles_logic_sv2::{
     codec_sv2::{HandshakeRole, Responder},
-    parsers::AnyMessage,
+    parsers_sv2::AnyMessage,
 };
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
@@ -42,7 +42,7 @@ pub async fn start_encrypted_tcp_server(
                     .expect("invalid key");
 
                     if let Ok((rx, tx)) =
-                        Connection::new::<'static, AnyMessage<'static>>(
+                        Connection::new::<AnyMessage<'static>>(
                             stream,
                             HandshakeRole::Responder(responder),
                         )
@@ -89,7 +89,7 @@ mod tests {
     use stratum_common::roles_logic_sv2::common_messages_sv2::{
         MESSAGE_TYPE_SETUP_CONNECTION, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
     };
-    use stratum_common::roles_logic_sv2::parsers::AnyMessage;
+    use stratum_common::roles_logic_sv2::parsers_sv2::AnyMessage;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
 

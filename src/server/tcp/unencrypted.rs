@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 use stratum_common::network_helpers_sv2::plain_connection::PlainConnection;
-use stratum_common::roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::parsers_sv2::AnyMessage;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -63,7 +63,7 @@ mod tests {
     use stratum_common::roles_logic_sv2::common_messages_sv2::{
         MESSAGE_TYPE_SETUP_CONNECTION, MESSAGE_TYPE_SETUP_CONNECTION_SUCCESS,
     };
-    use stratum_common::roles_logic_sv2::parsers::AnyMessage;
+    use stratum_common::roles_logic_sv2::parsers_sv2::AnyMessage;
     use tokio::sync::broadcast;
     use tokio::sync::mpsc;
 

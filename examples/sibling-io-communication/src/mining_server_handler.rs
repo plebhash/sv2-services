@@ -1,9 +1,9 @@
 use anyhow::Result;
-use stratum_common::roles_logic_sv2::mining_sv2::{
+use sv2_services::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel, SetCustomMiningJob,
     SubmitSharesExtended, SubmitSharesStandard, UpdateChannel,
 };
-use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use sv2_services::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 use sv2_services::server::service::event::Sv2ServerEventError;
 use sv2_services::server::service::outcome::Sv2ServerOutcome;
 use sv2_services::server::service::subprotocols::mining::handler::Sv2MiningServerHandler;

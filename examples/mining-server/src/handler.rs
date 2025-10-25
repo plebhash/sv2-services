@@ -1,15 +1,15 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use std::sync::Arc;
-use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::B032;
-use stratum_common::roles_logic_sv2::codec_sv2::binary_sv2::U256;
-use stratum_common::roles_logic_sv2::mining_sv2::{
+use sv2_services::roles_logic_sv2::codec_sv2::binary_sv2::B032;
+use sv2_services::roles_logic_sv2::codec_sv2::binary_sv2::U256;
+use sv2_services::roles_logic_sv2::mining_sv2::{
     CloseChannel, OpenExtendedMiningChannel, OpenStandardMiningChannel,
     OpenStandardMiningChannelSuccess, SetCustomMiningJob, SubmitSharesExtended,
     SubmitSharesStandard, UpdateChannel,
 };
-use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining};
-use stratum_common::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
+use sv2_services::roles_logic_sv2::parsers_sv2::{AnyMessage, Mining};
+use sv2_services::roles_logic_sv2::template_distribution_sv2::{NewTemplate, SetNewPrevHash};
 use sv2_services::server::service::client::Sv2MessagesToClient;
 use sv2_services::server::service::event::Sv2ServerEvent;
 use sv2_services::server::service::event::Sv2ServerEventError;

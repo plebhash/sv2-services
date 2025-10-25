@@ -2,7 +2,7 @@ use crate::server::service::connection::Sv2ConnectionClient;
 use crate::Sv2MessageIo;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
-use stratum_common::roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::parsers_sv2::AnyMessage;
 use tokio::sync::RwLock;
 
 /// Representation of a Client of a Sv2 Server, to be:

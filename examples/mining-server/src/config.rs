@@ -1,8 +1,8 @@
-use key_utils::Secp256k1PublicKey;
-use key_utils::Secp256k1SecretKey;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use sv2_services::key_utils::Secp256k1PublicKey;
+use sv2_services::key_utils::Secp256k1SecretKey;
 
 #[derive(Clone, Deserialize)]
 pub struct MyMiningServerConfig {

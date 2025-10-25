@@ -18,7 +18,7 @@ use std::sync::Arc;
 use stratum_common::roles_logic_sv2::common_messages_sv2::{
     Protocol, SetupConnection, SetupConnectionError, SetupConnectionSuccess,
 };
-use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages, Mining};
+use stratum_common::roles_logic_sv2::parsers_sv2::{AnyMessage, CommonMessages, Mining};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error};
 
@@ -942,7 +942,7 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
     use stratum_common::roles_logic_sv2;
     use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnection};
-    use stratum_common::roles_logic_sv2::parsers::{AnyMessage, CommonMessages};
+    use stratum_common::roles_logic_sv2::parsers_sv2::{AnyMessage, CommonMessages};
     use tokio_util::sync::CancellationToken;
 
     fn get_available_port() -> u16 {

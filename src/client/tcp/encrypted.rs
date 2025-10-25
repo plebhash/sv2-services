@@ -2,7 +2,7 @@ use key_utils::Secp256k1PublicKey;
 use std::net::SocketAddr;
 use stratum_common::network_helpers_sv2::noise_connection::Connection;
 use stratum_common::roles_logic_sv2::codec_sv2::{HandshakeRole, Initiator};
-use stratum_common::roles_logic_sv2::parsers::AnyMessage;
+use stratum_common::roles_logic_sv2::parsers_sv2::AnyMessage;
 use tokio::net::TcpStream;
 
 use crate::Sv2MessageIo;
@@ -30,11 +30,9 @@ impl Sv2EncryptedTcpClient {
         }
         .ok()?;
 
-        if let Ok((rx, tx)) = Connection::new::<'static, AnyMessage<'static>>(
-            tcp_stream,
-            HandshakeRole::Initiator(initiator),
-        )
-        .await
+        if let Ok((rx, tx)) =
+            Connection::new::<AnyMessage<'static>>(tcp_stream, HandshakeRole::Initiator(initiator))
+                .await
         {
             let sv2_message_io = Sv2MessageIo { rx, tx };
             tracing::info!("connected to: {}", server_addr);
@@ -59,7 +57,10 @@ mod tests {
     #[tokio::test]
     async fn new_sv2_encrypted_tcp_client_works() {
         // start a TemplateProvider
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         // connect client
         let sv2_encrypted_tcp_client = Sv2EncryptedTcpClient::new(tp_addr, None).await.unwrap();

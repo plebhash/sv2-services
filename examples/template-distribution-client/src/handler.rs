@@ -1,12 +1,12 @@
 use anyhow::Result;
-use stratum_common::roles_logic_sv2::template_distribution_sv2::{
-    NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
-};
 use sv2_services::client::service::event::Sv2ClientEvent;
 use sv2_services::client::service::event::Sv2ClientEventError;
 use sv2_services::client::service::outcome::Sv2ClientOutcome;
 use sv2_services::client::service::subprotocols::template_distribution::handler::Sv2TemplateDistributionClientHandler;
 use sv2_services::client::service::subprotocols::template_distribution::trigger::TemplateDistributionClientTrigger;
+use sv2_services::roles_logic_sv2::template_distribution_sv2::{
+    NewTemplate, RequestTransactionDataError, RequestTransactionDataSuccess, SetNewPrevHash,
+};
 use tracing::info;
 #[derive(Debug, Clone, Default)]
 pub struct MyTemplateDistributionHandler {

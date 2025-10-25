@@ -9,7 +9,7 @@
 use async_channel::{Receiver, Sender};
 use stratum_common::roles_logic_sv2::{
     codec_sv2::{framing_sv2::framing::Frame, StandardEitherFrame, StandardSv2Frame},
-    parsers::{
+    parsers_sv2::{
         AnyMessage, CommonMessages,
         JobDeclaration::{
             AllocateMiningJobToken, AllocateMiningJobTokenSuccess, DeclareMiningJob,

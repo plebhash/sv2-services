@@ -18,7 +18,7 @@ use stratum_common::roles_logic_sv2::common_messages_sv2::{Protocol, SetupConnec
 use stratum_common::roles_logic_sv2::mining_sv2::{
     OpenExtendedMiningChannel, OpenStandardMiningChannel,
 };
-use stratum_common::roles_logic_sv2::parsers::{
+use stratum_common::roles_logic_sv2::parsers_sv2::{
     AnyMessage, CommonMessages, Mining, TemplateDistribution,
 };
 use tokio::sync::RwLock;
@@ -1647,7 +1647,10 @@ mod tests {
     #[tokio::test]
     async fn sv2_client_service_initiate_connection_success() {
         // start a TemplateProvider
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
             coinbase_output_constraints: (1, 1),
@@ -1712,7 +1715,10 @@ mod tests {
     #[tokio::test]
     async fn sv2_client_service_initiate_connection_error() {
         // start a TemplateProvider
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         let sv2_client_service_config = Sv2ClientServiceConfig {
             min_supported_version: 2,
@@ -1849,7 +1855,10 @@ mod tests {
 
     #[tokio::test]
     async fn sv2_client_service_shutdown_when_not_connected() {
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
             coinbase_output_constraints: (1, 1),
@@ -1904,7 +1913,10 @@ mod tests {
 
     #[tokio::test]
     async fn sv2_client_service_shutdown_when_connected() {
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         let mining_handler = NullSv2MiningClientHandler;
 
@@ -1985,10 +1997,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_event_injector() {
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         // Start a sniffer to intercept messages between the client and the Template Provider.
-        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_addr, false, vec![]);
+        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_addr, false, vec![], None);
 
         // Allow some time for the sniffer to initialize.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -2105,10 +2120,13 @@ mod tests {
         };
 
         // Start a Template Provider that simulates a Bitcoin node with SV2 support.
-        let (_tp, tp_address) = start_template_provider(None);
+        let (_tp, tp_address) = start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         // Start a sniffer to intercept messages between the client and the Template Provider.
-        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_address, false, vec![]);
+        let (tp_sniffer, tp_sniffer_addr) = start_sniffer("", tp_address, false, vec![], None);
 
         // Update the client configuration to use the sniffer's address.
         if let Some(ref mut tdc) = client_config.template_distribution_config {
@@ -2296,7 +2314,10 @@ mod tests {
         };
 
         // Start a Template Provider that simulates a Bitcoin node with SV2 support.
-        let (_tp, tp_address) = start_template_provider(None);
+        let (_tp, tp_address) = start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         // Update the client configuration to use the sniffer's address.
         client_config
@@ -2394,7 +2415,10 @@ mod tests {
         use stratum_common::roles_logic_sv2::template_distribution_sv2::SubmitSolution;
 
         // Start a TemplateProvider
-        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(None);
+        let (_tp, tp_addr) = integration_tests_sv2::start_template_provider(
+            None,
+            integration_tests_sv2::template_provider::DifficultyLevel::Mid,
+        );
 
         let template_distribution_config = Sv2ClientServiceTemplateDistributionConfig {
             coinbase_output_constraints: (1, 1),

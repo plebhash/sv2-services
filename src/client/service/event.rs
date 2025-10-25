@@ -3,7 +3,7 @@ use crate::client::service::subprotocols::template_distribution::trigger::Templa
 use crate::server::service::event::Sv2ServerEvent;
 use crate::Sv2MessageIoError;
 use stratum_common::roles_logic_sv2::common_messages_sv2::Protocol;
-use stratum_common::roles_logic_sv2::parsers::{AnyMessage, Mining, TemplateDistribution};
+use stratum_common::roles_logic_sv2::parsers_sv2::{AnyMessage, Mining, TemplateDistribution};
 
 /// The event type for the [`crate::client::service::Sv2ClientService`] service.
 #[derive(Debug, Clone)]
